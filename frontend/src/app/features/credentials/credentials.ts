@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService } from '../../services/database.service';
 import { BigQueryApiService } from '../../services/bigquery-api.service';
+import { GoogleAuthService } from '../../services/google-auth.service';
 import type { ValidateCredentialsResponse } from '../../models/credential.model';
 import type { StoredCredential } from '../../db/app-database';
 
@@ -15,27 +16,91 @@ import type { StoredCredential } from '../../db/app-database';
       <div class="cred-card">
         <h1>Credentials</h1>
 
+        <div class="oauth-section">
+          @if (!oauthAvailable()) {
+            <div class="oauth-setup">
+              <p>To sign in with Google, enter your OAuth Client ID from the
+                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">GCP Credentials Console</a>.
+              </p>
+              <input
+                type="text"
+                [ngModel]="oauthClientIdInput()"
+                (ngModelChange)="oauthClientIdInput.set($event)"
+                placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+              />
+              <button (click)="saveOAuthClientId()" [disabled]="!oauthClientIdInput().trim()">
+                Save Client ID
+              </button>
+            </div>
+          } @else {
+            @if (!oauthProjectStep()) {
+              <div class="google-btn-row">
+                <button class="google-btn" (click)="startOAuthLogin()" [disabled]="oauthLoading()">
+                  <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  {{ oauthLoading() ? 'Signing in...' : 'Sign in with Google' }}
+                </button>
+                <button class="configure-btn" (click)="removeOAuthClientId()" title="Remove OAuth Client ID">
+                  &#9881;
+                </button>
+              </div>
+            }
+
+            @if (oauthProjectStep()) {
+              <div class="oauth-project-step">
+                <p>Signed in with Google. Enter your GCP Project ID to connect:</p>
+                <input
+                  type="text"
+                  [ngModel]="oauthProjectId()"
+                  (ngModelChange)="oauthProjectId.set($event)"
+                  placeholder="e.g. my-gcp-project-123"
+                />
+                @if (error()) {
+                  <div class="error">{{ error() }}</div>
+                }
+                <div class="btn-row">
+                  <button class="secondary-btn" (click)="cancelOAuth()">Cancel</button>
+                  <button (click)="validateOAuthProject()" [disabled]="oauthLoading() || !oauthProjectId().trim()">
+                    {{ oauthLoading() ? 'Validating...' : 'Connect' }}
+                  </button>
+                </div>
+              </div>
+            }
+          }
+        </div>
+
         @if (savedCredentials().length) {
           <div class="saved-section">
             <h2>Saved Credentials</h2>
             @for (cred of savedCredentials(); track cred.id) {
-              <div class="saved-item">
+              <div class="saved-item" [class.oauth-item]="cred.type === 'oauth'">
                 <div class="saved-info" (click)="useCred(cred)">
-                  <strong>{{ cred.name }}</strong>
+                  <strong>
+                    @if (cred.type === 'oauth') {
+                      <span class="oauth-badge">G</span>
+                    }
+                    {{ cred.name }}
+                  </strong>
                   <span class="saved-meta">{{ cred.projectId }}</span>
                 </div>
                 <button class="delete-btn" (click)="deleteCred(cred)" title="Remove">&#10005;</button>
               </div>
             }
           </div>
-          <div class="divider">
-            <span>or add new</span>
-          </div>
+          @if (!adding()) {
+            <div class="divider">
+              <span>or add new</span>
+            </div>
+          }
         }
 
         @if (!adding()) {
           <button class="add-btn" (click)="adding.set(true)">
-            + Add Credentials
+            + Add Service Account
           </button>
         }
 
@@ -48,7 +113,7 @@ import type { StoredCredential } from '../../db/app-database';
               placeholder='{"type": "service_account", ...}'
               rows="10"
             ></textarea>
-            @if (error()) {
+            @if (error() && !oauthProjectStep()) {
               <div class="error">{{ error() }}</div>
             }
             <div class="btn-row">
@@ -110,6 +175,74 @@ import type { StoredCredential } from '../../db/app-database';
     h1 { font-size: 1.8rem; margin-bottom: 20px; color: #e0e0e0; }
     h2 { font-size: 1.1rem; color: #9e9e9e; margin-bottom: 12px; }
     p { color: #9e9e9e; margin-bottom: 16px; }
+
+    /* OAuth Section */
+    .oauth-section { margin-bottom: 20px; }
+    .oauth-setup a {
+      color: #4fc3f7;
+      text-decoration: none;
+    }
+    .oauth-setup a:hover { text-decoration: underline; }
+    .google-btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    .configure-btn {
+      padding: 12px 14px;
+      font-size: 1.1rem;
+      background: rgba(255,255,255,0.05);
+      color: #9e9e9e;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .configure-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); border-color: rgba(244,67,54,0.3); }
+    .google-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: 1;
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #fff;
+      color: #3c4043;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .google-btn:hover:not(:disabled) {
+      background: #f8f9fa;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .google-icon { flex-shrink: 0; }
+    .oauth-project-step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .oauth-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      background: #4285F4;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .oauth-item { border-color: rgba(66,133,244,0.25) !important; }
+
     .saved-section { margin-bottom: 8px; }
     .saved-item {
       display: flex;
@@ -235,6 +368,7 @@ export class CredentialsComponent implements OnInit {
   private router = inject(Router);
   private dbService = inject(DatabaseService);
   private apiService = inject(BigQueryApiService);
+  private googleAuth = inject(GoogleAuthService);
 
   savedCredentials = signal<StoredCredential[]>([]);
   adding = signal(false);
@@ -245,22 +379,110 @@ export class CredentialsComponent implements OnInit {
   error = signal('');
   validationResult = signal<ValidateCredentialsResponse | null>(null);
 
+  // OAuth state
+  oauthAvailable = signal(false);
+  oauthLoading = signal(false);
+  oauthProjectStep = signal(false);
+  oauthProjectId = signal('');
+  oauthClientIdInput = signal('');
+  private pendingAccessToken = '';
+  private pendingTokenExpiry = new Date();
+
   async ngOnInit() {
     await this.loadCredentials();
     if (!this.savedCredentials().length) {
       this.adding.set(true);
     }
+    // Initialize OAuth if client ID is stored in IndexedDB
+    const clientId = await this.dbService.getOAuthClientId();
+    if (clientId) {
+      try {
+        await this.googleAuth.init(clientId);
+        this.oauthAvailable.set(true);
+      } catch {}
+    }
   }
 
   async loadCredentials() {
-    this.savedCredentials.set(await this.dbService.getAllCredentials());
+    const all = await this.dbService.getAllCredentials();
+    // Sort: OAuth ("My Account") first, then service accounts by name
+    all.sort((a, b) => {
+      if (a.type === 'oauth' && b.type !== 'oauth') return -1;
+      if (a.type !== 'oauth' && b.type === 'oauth') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    this.savedCredentials.set(all);
+  }
+
+  async startOAuthLogin() {
+    this.oauthLoading.set(true);
+    this.error.set('');
+    try {
+      const result = await this.googleAuth.requestAccessToken();
+      this.pendingAccessToken = result.accessToken;
+      this.pendingTokenExpiry = new Date(Date.now() + result.expiresIn * 1000);
+      this.oauthProjectStep.set(true);
+    } catch (err: any) {
+      this.error.set(err.message || 'OAuth sign-in failed');
+    } finally {
+      this.oauthLoading.set(false);
+    }
+  }
+
+  async validateOAuthProject() {
+    this.oauthLoading.set(true);
+    this.error.set('');
+    try {
+      const result = await this.apiService.validateCredentials({
+        accessToken: this.pendingAccessToken,
+        projectId: this.oauthProjectId().trim()
+      });
+      if (result.success) {
+        const datasets = result.datasets.map(ds => ({ datasetId: ds.datasetId, tables: ds.tables }));
+        const id = await this.dbService.saveOAuthCredential(
+          this.pendingAccessToken,
+          this.pendingTokenExpiry,
+          this.oauthProjectId().trim(),
+          datasets
+        );
+        this.router.navigate(['/query'], { queryParams: { credId: id } });
+      } else {
+        this.error.set(result.error || 'Validation failed');
+      }
+    } catch (err: any) {
+      this.error.set(err.message || 'Failed to validate project');
+    } finally {
+      this.oauthLoading.set(false);
+    }
+  }
+
+  async saveOAuthClientId() {
+    const clientId = this.oauthClientIdInput().trim();
+    if (!clientId) return;
+    await this.dbService.setOAuthClientId(clientId);
+    await this.googleAuth.init(clientId);
+    this.oauthAvailable.set(true);
+  }
+
+  async removeOAuthClientId() {
+    if (!confirm('Remove the stored OAuth Client ID?')) return;
+    await this.dbService.deleteOAuthClientId();
+    this.oauthAvailable.set(false);
+    this.oauthClientIdInput.set('');
+  }
+
+  cancelOAuth() {
+    this.oauthProjectStep.set(false);
+    this.oauthProjectId.set('');
+    this.pendingAccessToken = '';
+    this.error.set('');
   }
 
   async validate() {
     this.validating.set(true);
     this.error.set('');
     try {
-      const result = await this.apiService.validateCredentials(this.credentialsJson());
+      const result = await this.apiService.validateCredentials({ credentialsJson: this.credentialsJson() });
       if (result.success) {
         this.validationResult.set(result);
         this.validated.set(true);
@@ -281,7 +503,8 @@ export class CredentialsComponent implements OnInit {
       credentialsJson: this.credentialsJson(),
       projectId: result.projectId!,
       datasets: result.datasets.map(ds => ({ datasetId: ds.datasetId, tables: ds.tables })),
-      createdAt: new Date()
+      createdAt: new Date(),
+      type: 'service-account'
     });
     this.router.navigate(['/query'], { queryParams: { credId: id } });
   }
@@ -291,7 +514,8 @@ export class CredentialsComponent implements OnInit {
   }
 
   async deleteCred(cred: StoredCredential) {
-    if (!confirm(`Remove "${cred.name}"? Its query history will also be deleted.`)) return;
+    const label = cred.type === 'oauth' ? 'My Account (Google OAuth)' : cred.name;
+    if (!confirm(`Remove "${label}"? Its query history will also be deleted.`)) return;
     await this.dbService.deleteCredential(cred.id!);
     await this.loadCredentials();
     if (!this.savedCredentials().length) {

@@ -7,7 +7,6 @@ import type { SqlHistoryEntry } from '../../../../db/app-database';
   template: `
     <div class="history-panel">
       <div class="history-header">
-        <h3>History</h3>
         @if (entries().length) {
           <button class="clear-btn" title="Clear history" (click)="confirmClear()">&#10005;</button>
         }
@@ -32,48 +31,49 @@ import type { SqlHistoryEntry } from '../../../../db/app-database';
     .history-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       margin-bottom: 12px;
       padding-bottom: 8px;
       padding-right: 20px;
-      border-bottom: 1px solid #30363d;
-    }
-    h3 {
-      color: #e0e0e0;
-      font-size: 0.95rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .clear-btn {
       background: none;
       border: none;
-      color: #666;
+      color: #4a4a5e;
       cursor: pointer;
       font-size: 0.85rem;
       padding: 2px 6px;
       border-radius: 4px;
-      transition: color 0.15s, background 0.15s;
+      transition: all 0.15s;
     }
-    .clear-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); }
-    .empty { color: #666; font-size: 0.85rem; }
+    .clear-btn:hover { color: #ef9a9a; background: rgba(244,67,54,0.08); }
+    .empty { color: #4a4a5e; font-size: 0.82rem; }
     .history-item {
       padding: 8px 10px;
       border-radius: 6px;
       cursor: pointer;
-      margin-bottom: 4px;
-      transition: background 0.15s;
+      margin-bottom: 2px;
+      transition: all 0.15s;
+      border: 1px solid transparent;
     }
-    .history-item:hover { background: rgba(79,195,247,0.1); }
+    .history-item:hover {
+      background: rgba(79,195,247,0.04);
+      border-color: rgba(79,195,247,0.1);
+    }
     .sql-preview {
       display: block;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-      font-size: 0.8rem;
-      color: #c9d1d9;
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: #9e9eaa;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .meta {
-      font-size: 0.75rem;
-      color: #666;
+      font-size: 0.72rem;
+      color: #4a4a5e;
+      margin-top: 2px;
     }
   `]
 })

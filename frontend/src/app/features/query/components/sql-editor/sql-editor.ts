@@ -25,31 +25,42 @@ import { FormsModule } from '@angular/forms';
     .editor-container { display: flex; flex-direction: column; gap: 8px; }
     textarea {
       width: 100%;
-      background: #0d1117;
-      color: #c9d1d9;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 14px;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-      font-size: 0.95rem;
+      background: rgba(255,255,255,0.02);
+      color: #c0c0d0;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+      font-size: 0.92rem;
       resize: vertical;
-      line-height: 1.5;
+      line-height: 1.6;
+      transition: border-color 0.15s;
     }
-    textarea:focus { outline: none; border-color: #4fc3f7; }
+    textarea:focus {
+      outline: none;
+      border-color: rgba(79,195,247,0.4);
+      background: rgba(255,255,255,0.03);
+    }
+    textarea::placeholder { color: #4a4a5e; }
     .editor-actions { display: flex; justify-content: flex-end; }
     button {
-      padding: 8px 24px;
-      background: #4fc3f7;
-      color: #1a1a2e;
+      padding: 8px 28px;
+      background: linear-gradient(135deg, #4fc3f7, #64b5f6);
+      color: #0d0d1a;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
-      font-weight: 600;
-      font-size: 0.9rem;
-      transition: background 0.2s;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.3px;
+      transition: transform 0.1s, box-shadow 0.15s;
+      box-shadow: 0 2px 12px rgba(79,195,247,0.2);
     }
-    button:hover:not(:disabled) { background: #81d4fa; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(79,195,247,0.3);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
   `]
 })
 export class SqlEditorComponent {

@@ -7,7 +7,7 @@ import { Router } from '@angular/router';
   template: `
     <div class="page">
       <nav class="banner">
-        <div class="banner-brand">BQ Boss</div>
+        <div class="banner-brand"><img src="logo.png" alt="BQ Boss" class="brand-logo" />BQ Boss</div>
         <div class="banner-links">
           <button class="link-btn" (click)="howItWorks()">How It Works</button>
           <button class="link-btn" (click)="aiAssistInfo()">AI Assist</button>
@@ -45,7 +45,11 @@ import { Router } from '@angular/router';
       </div>
 
       <footer class="footer">
-        <button class="footer-link" (click)="howItWorks()">How It Works</button>
+        <div class="footer-links">
+          <button class="footer-link" (click)="howItWorks()">How It Works</button>
+          <button class="footer-link" (click)="privacy()">Privacy Policy</button>
+          <button class="footer-link" (click)="terms()">Terms of Service</button>
+        </div>
         <span>Built for teams that live in BigQuery.</span>
       </footer>
     </div>
@@ -72,12 +76,21 @@ import { Router } from '@angular/router';
       z-index: 10;
     }
     .banner-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 1.3rem;
       font-weight: 700;
       letter-spacing: 0.5px;
       background: linear-gradient(135deg, #4fc3f7, #ab47bc);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      object-fit: contain;
     }
     .banner-links {
       display: flex;
@@ -212,6 +225,10 @@ import { Router } from '@angular/router';
       align-items: center;
       gap: 8px;
     }
+    .footer-links {
+      display: flex;
+      gap: 16px;
+    }
     .footer-link {
       background: none;
       border: none;
@@ -236,5 +253,13 @@ export class SplashComponent {
 
   aiAssistInfo() {
     this.router.navigate(['/ai-assist']);
+  }
+
+  privacy() {
+    this.router.navigate(['/privacy']);
+  }
+
+  terms() {
+    this.router.navigate(['/terms']);
   }
 }

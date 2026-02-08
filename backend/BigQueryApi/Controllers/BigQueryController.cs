@@ -19,7 +19,7 @@ public class BigQueryController : ControllerBase
     public async Task<ActionResult<ValidateCredentialsResponse>> ValidateCredentials(
         [FromBody] ValidateCredentialsRequest request)
     {
-        var result = await _bigQueryService.ValidateCredentials(request.CredentialsJson);
+        var result = await _bigQueryService.ValidateCredentials(request.CredentialsJson, request.AccessToken, request.ProjectId);
         return Ok(result);
     }
 
@@ -27,7 +27,7 @@ public class BigQueryController : ControllerBase
     public async Task<ActionResult<ExecuteQueryResponse>> Execute(
         [FromBody] ExecuteQueryRequest request)
     {
-        var result = await _bigQueryService.ExecuteQuery(request.CredentialsJson, request.Sql);
+        var result = await _bigQueryService.ExecuteQuery(request.CredentialsJson, request.Sql, request.AccessToken, request.ProjectId);
         return Ok(result);
     }
 
@@ -35,7 +35,7 @@ public class BigQueryController : ControllerBase
     public async Task<ActionResult<CheckGeminiAccessResponse>> CheckGeminiAccess(
         [FromBody] CheckGeminiAccessRequest request)
     {
-        var result = await _bigQueryService.CheckGeminiAccess(request.CredentialsJson);
+        var result = await _bigQueryService.CheckGeminiAccess(request.CredentialsJson, request.AccessToken, request.ProjectId);
         return Ok(result);
     }
 
@@ -43,7 +43,8 @@ public class BigQueryController : ControllerBase
     public async Task<ActionResult<GenerateSqlResponse>> GenerateSql(
         [FromBody] GenerateSqlRequest request)
     {
-        var result = await _bigQueryService.GenerateSql(request.CredentialsJson, request.Schema, request.Prompt);
+        var result = await _bigQueryService.GenerateSql(request.CredentialsJson, request.Schema, request.Prompt, request.AccessToken, request.ProjectId);
         return Ok(result);
     }
+
 }

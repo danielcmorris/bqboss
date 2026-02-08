@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { db, type StoredCredential, type SqlHistoryEntry, type SchemaEntry } from '../db/app-database';
+import { db, type StoredCredential, type SqlHistoryEntry, type SchemaEntry, type FavoriteQuery, type AppSetting } from '../db/app-database';
 
 @Injectable({ providedIn: 'root' })
 export class DatabaseService {
@@ -70,5 +70,75 @@ export class DatabaseService {
 
   async getSchemaEntries(credentialId: number, datasetId: string): Promise<SchemaEntry[]> {
     return db.schema.where('[credentialId+datasetId]').equals([credentialId, datasetId]).toArray();
+  }
+
+  async getFavorites(credentialId: number): Promise<FavoriteQuery[]> {
+    return db.favorites.where('credentialId').equals(credentialId).toArray();
+  }
+
+  async addFavorite(entry: Omit<FavoriteQuery, 'id'>): Promise<number> {
+    return db.favorites.add(entry as FavoriteQuery);
+  }
+
+  async findFavoriteBySql(credentialId: number, sql: string): Promise<FavoriteQuery | undefined> {
+    return db.favorites
+      .where('credentialId').equals(credentialId)
+      .filter(f => f.sql === sql)
+      .first();
+  }
+
+  async deleteFavorite(id: number): Promise<void> {
+    await db.favorites.delete(id);
+  }
+
+  async getDistinctTableNames(credentialId: number, datasetId: string): Promise<string[]> {
+    const entries = await db.schema.where('[credentialId+datasetId]').equals([credentialId, datasetId]).toArray();
+    return [...new Set(entries.map(e => e.tableName))].sort();
+  }
+
+  async getOAuthCredential(): Promise<StoredCredential | undefined> {
+    return db.credentials.filter(c => c.type === 'oauth').first();
+  }
+
+  async saveOAuthCredential(accessToken: string, tokenExpiry: Date, projectId: string, datasets: StoredCredential['datasets']): Promise<number> {
+    const existing = await this.getOAuthCredential();
+    const cred: StoredCredential = {
+      ...(existing ?? {}),
+      id: existing?.id,
+      name: 'My Account',
+      credentialsJson: '',
+      projectId,
+      datasets,
+      createdAt: existing?.createdAt ?? new Date(),
+      type: 'oauth',
+      accessToken,
+      tokenExpiry
+    };
+    return db.credentials.put(cred);
+  }
+
+  async updateOAuthToken(id: number, accessToken: string, tokenExpiry: Date): Promise<void> {
+    await db.credentials.update(id, { accessToken, tokenExpiry });
+  }
+
+  async getSetting(key: string): Promise<string | undefined> {
+    const entry = await db.settings.get(key);
+    return entry?.value;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await db.settings.put({ key, value });
+  }
+
+  async getOAuthClientId(): Promise<string | undefined> {
+    return this.getSetting('oauthClientId');
+  }
+
+  async setOAuthClientId(value: string): Promise<void> {
+    return this.setSetting('oauthClientId', value);
+  }
+
+  async deleteOAuthClientId(): Promise<void> {
+    await db.settings.delete('oauthClientId');
   }
 }

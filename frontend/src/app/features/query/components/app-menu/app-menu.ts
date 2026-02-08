@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, computed } from '@angular/core';
 import type { StoredCredential } from '../../../../db/app-database';
 
 @Component({
@@ -12,11 +12,14 @@ import type { StoredCredential } from '../../../../db/app-database';
         <div class="menu-dropdown">
           @if (credentials().length > 1) {
             <div class="menu-section-label">Switch Credentials</div>
-            @for (cred of credentials(); track cred.id) {
+            @for (cred of sortedCredentials(); track cred.id) {
               <button
                 [class.active]="cred.id === activeCredentialId()"
                 (click)="switchCredential.emit(cred.id!); open = false"
               >
+                @if (cred.type === 'oauth') {
+                  <span class="oauth-indicator">G</span>
+                }
                 {{ cred.name }}
                 <span class="cred-project">{{ cred.projectId }}</span>
               </button>
@@ -32,16 +35,19 @@ import type { StoredCredential } from '../../../../db/app-database';
   styles: [`
     .menu-wrapper { position: relative; }
     .menu-btn {
-      background: none;
-      border: 1px solid #30363d;
-      color: #e0e0e0;
-      font-size: 1.4rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #8a8a9e;
+      font-size: 1.3rem;
       padding: 4px 10px;
       border-radius: 6px;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: all 0.15s;
     }
-    .menu-btn:hover { background: rgba(255,255,255,0.05); }
+    .menu-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: #c0c0d0;
+    }
     .menu-backdrop {
       position: fixed;
       inset: 0;
@@ -50,24 +56,26 @@ import type { StoredCredential } from '../../../../db/app-database';
     .menu-dropdown {
       position: absolute;
       right: 0;
-      top: calc(100% + 6px);
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 8px;
+      top: calc(100% + 8px);
+      background: #1a1a28;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
       overflow: hidden;
       z-index: 100;
       min-width: 220px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
     .menu-section-label {
-      padding: 8px 16px 4px;
-      font-size: 0.75rem;
-      color: #666;
+      padding: 10px 16px 4px;
+      font-size: 0.7rem;
+      color: #5a5a70;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
+      font-weight: 600;
     }
     .menu-divider {
       height: 1px;
-      background: #30363d;
+      background: rgba(255,255,255,0.06);
       margin: 4px 0;
     }
     .menu-dropdown button {
@@ -76,20 +84,35 @@ import type { StoredCredential } from '../../../../db/app-database';
       padding: 10px 16px;
       background: none;
       border: none;
-      color: #e0e0e0;
+      color: #c0c0d0;
       text-align: left;
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
+      transition: background 0.12s;
     }
-    .menu-dropdown button:hover { background: rgba(79,195,247,0.1); }
+    .menu-dropdown button:hover { background: rgba(79,195,247,0.06); }
     .menu-dropdown button.active {
-      background: rgba(79,195,247,0.15);
+      background: rgba(79,195,247,0.08);
       color: #4fc3f7;
     }
     .cred-project {
       display: block;
-      font-size: 0.75rem;
-      color: #666;
+      font-size: 0.72rem;
+      color: #5a5a70;
+    }
+    .oauth-indicator {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      background: #4285F4;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.65rem;
+      font-weight: 700;
+      margin-right: 6px;
+      vertical-align: middle;
     }
   `]
 })
@@ -100,6 +123,16 @@ export class AppMenuComponent {
   switchCredential = output<number>();
   manageCredentials = output();
   clearHistory = output();
+
+  sortedCredentials = computed(() => {
+    const creds = [...this.credentials()];
+    creds.sort((a, b) => {
+      if (a.type === 'oauth' && b.type !== 'oauth') return -1;
+      if (a.type !== 'oauth' && b.type === 'oauth') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return creds;
+  });
 
   clearHist() { this.clearHistory.emit(); }
 }

@@ -12,6 +12,9 @@ export interface StoredCredential {
   projectId: string;
   datasets: StoredDatasetInfo[];
   createdAt: Date;
+  type: 'service-account' | 'oauth';
+  accessToken?: string;
+  tokenExpiry?: Date;
 }
 
 export interface SqlHistoryEntry {
@@ -35,10 +38,26 @@ export interface SchemaEntry {
   fetchedAt: Date;
 }
 
+export interface FavoriteQuery {
+  id?: number;
+  credentialId: number;
+  name: string;
+  sql: string;
+  isBuiltIn: boolean;
+  createdAt: Date;
+}
+
+export interface AppSetting {
+  key: string;
+  value: string;
+}
+
 export class AppDatabase extends Dexie {
   credentials!: Table<StoredCredential, number>;
   sqlHistory!: Table<SqlHistoryEntry, number>;
   schema!: Table<SchemaEntry, number>;
+  favorites!: Table<FavoriteQuery, number>;
+  settings!: Table<AppSetting, string>;
 
   constructor() {
     super('BigQuerySqlManager');
@@ -56,6 +75,19 @@ export class AppDatabase extends Dexie {
     });
     this.version(4).stores({
       schema: '++id, credentialId, [credentialId+datasetId]'
+    });
+    this.version(5).stores({
+      favorites: '++id, credentialId'
+    });
+    this.version(6).stores({}).upgrade(tx => {
+      return tx.table('credentials').toCollection().modify(cred => {
+        if (!cred.type) {
+          cred.type = 'service-account';
+        }
+      });
+    });
+    this.version(7).stores({
+      settings: 'key'
     });
   }
 }

@@ -7,7 +7,7 @@ import { Router } from '@angular/router';
   template: `
     <div class="page">
       <nav class="banner">
-        <div class="banner-brand" (click)="goHome()">BQ Boss</div>
+        <div class="banner-brand" (click)="goHome()"><img src="logo.png" alt="" class="brand-logo" />BQ Boss</div>
         <button class="nav-btn" (click)="goHome()">Home</button>
       </nav>
 
@@ -101,6 +101,9 @@ import { Router } from '@angular/router';
       z-index: 10;
     }
     .banner-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 1.3rem;
       font-weight: 700;
       letter-spacing: 0.5px;
@@ -108,6 +111,12 @@ import { Router } from '@angular/router';
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       cursor: pointer;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      object-fit: contain;
     }
     .nav-btn {
       padding: 8px 28px;

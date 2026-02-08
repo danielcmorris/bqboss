@@ -8,6 +8,7 @@ import { Router, ActivatedRoute } from '@angular/router';
     <div class="help-container">
       <div class="help-content">
         <div class="help-header">
+          <span class="brand" (click)="goHome()"><img src="logo.png" alt="" class="brand-logo" />BQ Boss</span>
           <h1>BigQuery Utility Commands Reference</h1>
           <button class="back-btn" (click)="goBack()">&larr; Back to Query</button>
         </div>
@@ -201,6 +202,24 @@ bq query --use_legacy_sql=false "SELECT COUNT(*) FROM \`{{ p() }}.{{ ds() }}.Pro
       font-size: 1.6rem;
       color: #e0e0e0;
     }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #4fc3f7, #ab47bc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      cursor: pointer;
+    }
+    .brand-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      object-fit: contain;
+    }
     .back-btn {
       background: rgba(79,195,247,0.1);
       color: #4fc3f7;
@@ -262,6 +281,10 @@ export class HelpComponent implements OnInit {
     if (params.get('project')) this.p.set(params.get('project')!);
     if (params.get('dataset')) this.ds.set(params.get('dataset')!);
     this.credId = params.get('credId') || '';
+  }
+
+  goHome() {
+    this.router.navigate(['/credentials']);
   }
 
   goBack() {

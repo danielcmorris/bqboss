@@ -47,15 +47,39 @@ public class BigQueryService
         }
     }
 
-    public Task<ValidateCredentialsResponse> ValidateCredentials(string credentialsJson)
+    private async Task<PredictionServiceClient> GetOrCreateGeminiClientFromToken(string accessToken, string projectId)
+    {
+        const string location = "us-central1";
+        var credential = GoogleCredential.FromAccessToken(accessToken)
+            .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
+        var endpoint = $"{location}-aiplatform.googleapis.com";
+        return await new PredictionServiceClientBuilder
+        {
+            Endpoint = endpoint,
+            GoogleCredential = credential
+        }.BuildAsync();
+    }
+
+    public Task<ValidateCredentialsResponse> ValidateCredentials(string credentialsJson, string? accessToken = null, string? projectId = null)
     {
         try
         {
-            var projectId = ExtractProjectId(credentialsJson);
-            var client = CreateClient(credentialsJson, projectId);
+            BigQueryClient client;
+            string resolvedProjectId;
+
+            if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
+            {
+                client = CreateClientFromToken(accessToken, projectId);
+                resolvedProjectId = projectId;
+            }
+            else
+            {
+                resolvedProjectId = ExtractProjectId(credentialsJson);
+                client = CreateClient(credentialsJson, resolvedProjectId);
+            }
 
             var datasets = new List<DatasetInfo>();
-            var datasetList = client.ListDatasets(projectId);
+            var datasetList = client.ListDatasets(resolvedProjectId);
 
             foreach (var dataset in datasetList)
             {
@@ -75,7 +99,7 @@ public class BigQueryService
             return Task.FromResult(new ValidateCredentialsResponse
             {
                 Success = true,
-                ProjectId = projectId,
+                ProjectId = resolvedProjectId,
                 Datasets = datasets
             });
         }
@@ -89,13 +113,22 @@ public class BigQueryService
         }
     }
 
-    public async Task<ExecuteQueryResponse> ExecuteQuery(string credentialsJson, string sql)
+    public async Task<ExecuteQueryResponse> ExecuteQuery(string credentialsJson, string sql, string? accessToken = null, string? projectId = null)
     {
         var sw = Stopwatch.StartNew();
         try
         {
-            var projectId = ExtractProjectId(credentialsJson);
-            var client = CreateClient(credentialsJson, projectId);
+            BigQueryClient client;
+
+            if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
+            {
+                client = CreateClientFromToken(accessToken, projectId);
+            }
+            else
+            {
+                var extractedProjectId = ExtractProjectId(credentialsJson);
+                client = CreateClient(credentialsJson, extractedProjectId);
+            }
 
             var results = await client.ExecuteQueryAsync(sql, parameters: null);
             sw.Stop();
@@ -134,17 +167,28 @@ public class BigQueryService
         }
     }
 
-    public async Task<CheckGeminiAccessResponse> CheckGeminiAccess(string credentialsJson)
+    public async Task<CheckGeminiAccessResponse> CheckGeminiAccess(string credentialsJson, string? accessToken = null, string? projectId = null)
     {
         const string location = "us-central1";
         const string model = "gemini-2.0-flash";
 
         try
         {
-            var projectId = ExtractProjectId(credentialsJson);
-            var client = await GetOrCreateGeminiClient(credentialsJson);
+            PredictionServiceClient client;
+            string resolvedProjectId;
 
-            var modelName = $"projects/{projectId}/locations/{location}/publishers/google/models/{model}";
+            if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
+            {
+                client = await GetOrCreateGeminiClientFromToken(accessToken, projectId);
+                resolvedProjectId = projectId;
+            }
+            else
+            {
+                resolvedProjectId = ExtractProjectId(credentialsJson);
+                client = await GetOrCreateGeminiClient(credentialsJson);
+            }
+
+            var modelName = $"projects/{resolvedProjectId}/locations/{location}/publishers/google/models/{model}";
             var generateRequest = new GenerateContentRequest
             {
                 Model = modelName,
@@ -163,34 +207,50 @@ public class BigQueryService
             return new CheckGeminiAccessResponse
             {
                 HasAccess = true,
-                ProjectId = projectId,
+                ProjectId = resolvedProjectId,
                 Location = location
             };
         }
         catch (Exception ex)
         {
-            var projectId = TryExtractProjectId(credentialsJson);
+            string? fallbackProjectId;
+            if (!string.IsNullOrEmpty(projectId))
+                fallbackProjectId = projectId;
+            else
+                fallbackProjectId = TryExtractProjectId(credentialsJson);
+
             return new CheckGeminiAccessResponse
             {
                 HasAccess = false,
                 Error = ex.Message,
-                ProjectId = projectId,
+                ProjectId = fallbackProjectId,
                 Location = location
             };
         }
     }
 
-    public async Task<GenerateSqlResponse> GenerateSql(string credentialsJson, string schema, string prompt)
+    public async Task<GenerateSqlResponse> GenerateSql(string credentialsJson, string schema, string prompt, string? accessToken = null, string? projectId = null)
     {
         const string location = "us-central1";
         const string model = "gemini-2.0-flash";
 
         try
         {
-            var projectId = ExtractProjectId(credentialsJson);
-            var client = await GetOrCreateGeminiClient(credentialsJson);
+            PredictionServiceClient client;
+            string resolvedProjectId;
 
-            var modelName = $"projects/{projectId}/locations/{location}/publishers/google/models/{model}";
+            if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
+            {
+                client = await GetOrCreateGeminiClientFromToken(accessToken, projectId);
+                resolvedProjectId = projectId;
+            }
+            else
+            {
+                resolvedProjectId = ExtractProjectId(credentialsJson);
+                client = await GetOrCreateGeminiClient(credentialsJson);
+            }
+
+            var modelName = $"projects/{resolvedProjectId}/locations/{location}/publishers/google/models/{model}";
             var systemText = $"You are a BigQuery SQL assistant. Given the database schema below, convert the user's request into a BigQuery SQL query. Return ONLY the SQL, no explanation or markdown.\n\nSchema:\n{schema}";
             var generateRequest = new GenerateContentRequest
             {
@@ -249,6 +309,12 @@ public class BigQueryService
     private static BigQueryClient CreateClient(string credentialsJson, string projectId)
     {
         var credential = GoogleCredential.FromJson(credentialsJson);
+        return BigQueryClient.Create(projectId, credential);
+    }
+
+    private static BigQueryClient CreateClientFromToken(string accessToken, string projectId)
+    {
+        var credential = GoogleCredential.FromAccessToken(accessToken);
         return BigQueryClient.Create(projectId, credential);
     }
 }
