@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, NgZone } from '@angular/core';
+import { Component, OnInit, inject, signal, ApplicationRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService } from '../../services/database.service';
@@ -418,7 +418,7 @@ import type { StoredCredential } from '../../db/app-database';
 })
 export class CredentialsComponent implements OnInit {
   private router = inject(Router);
-  private zone = inject(NgZone);
+  private appRef = inject(ApplicationRef);
   private dbService = inject(DatabaseService);
   private apiService = inject(BigQueryApiService);
   private googleAuth = inject(GoogleAuthService);
@@ -470,20 +470,18 @@ export class CredentialsComponent implements OnInit {
     console.log('[OAuth] Requesting access token...');
     this.googleAuth.requestAccessToken().then(
       result => {
-        this.zone.run(() => {
-          console.log('[OAuth] Token received, expires in', result.expiresIn, 'seconds');
-          this.pendingAccessToken = result.accessToken;
-          this.pendingTokenExpiry = new Date(Date.now() + result.expiresIn * 1000);
-          this.oauthProjectStep.set(true);
-          this.oauthLoading.set(false);
-        });
+        console.log('[OAuth] Token received, expires in', result.expiresIn, 'seconds');
+        this.pendingAccessToken = result.accessToken;
+        this.pendingTokenExpiry = new Date(Date.now() + result.expiresIn * 1000);
+        this.oauthProjectStep.set(true);
+        this.oauthLoading.set(false);
+        this.appRef.tick();
       },
       err => {
-        this.zone.run(() => {
-          console.error('[OAuth] Error:', err);
-          this.error.set(err.message || 'OAuth sign-in failed');
-          this.oauthLoading.set(false);
-        });
+        console.error('[OAuth] Error:', err);
+        this.error.set(err.message || 'OAuth sign-in failed');
+        this.oauthLoading.set(false);
+        this.appRef.tick();
       }
     );
   }

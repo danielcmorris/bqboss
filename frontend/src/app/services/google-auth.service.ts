@@ -1,10 +1,9 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
 declare const google: any;
 
 @Injectable({ providedIn: 'root' })
 export class GoogleAuthService {
-  private zone = inject(NgZone);
   private tokenClient: any = null;
   private _initialized = false;
 
@@ -35,25 +34,21 @@ export class GoogleAuthService {
 
       this.tokenClient.callback = (response: any) => {
         console.log('[GIS] callback fired, response keys:', Object.keys(response));
-        this.zone.run(() => {
-          if (response.error) {
-            console.error('[GIS] error in response:', response.error, response.error_description);
-            reject(new Error(response.error_description || response.error));
-            return;
-          }
-          console.log('[GIS] access_token received, expires_in:', response.expires_in);
-          resolve({
-            accessToken: response.access_token,
-            expiresIn: Number(response.expires_in)
-          });
+        if (response.error) {
+          console.error('[GIS] error in response:', response.error, response.error_description);
+          reject(new Error(response.error_description || response.error));
+          return;
+        }
+        console.log('[GIS] access_token received, expires_in:', response.expires_in);
+        resolve({
+          accessToken: response.access_token,
+          expiresIn: Number(response.expires_in)
         });
       };
 
       this.tokenClient.error_callback = (error: any) => {
         console.error('[GIS] error_callback fired:', error);
-        this.zone.run(() => {
-          reject(new Error(error.message || 'OAuth popup was closed or blocked'));
-        });
+        reject(new Error(error.message || 'OAuth popup was closed or blocked'));
       };
 
       this.tokenClient.requestAccessToken();
