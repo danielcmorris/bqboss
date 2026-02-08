@@ -1,0 +1,21 @@
+# Credentials
+creds/
+
+# .NET
+backend/**/bin/
+backend/**/obj/
+backend/**/*.user
+
+# Angular / Node
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.vscode/
+
+# Environment (contains AG Grid license key)
+frontend/src/environments/environment.ts
+
+# IDE
+.idea/
+*.swp
+*.swo
