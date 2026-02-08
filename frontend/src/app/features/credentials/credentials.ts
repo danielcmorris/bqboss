@@ -122,6 +122,9 @@ import type { StoredCredential } from '../../db/app-database';
               Save Client ID
             </button>
           } @else {
+            @if (error()) {
+              <div class="error">{{ error() }}</div>
+            }
             @if (!oauthProjectStep()) {
               <div class="google-btn-row">
                 <button class="google-btn" (click)="startOAuthLogin()" [disabled]="oauthLoading()">
@@ -464,11 +467,14 @@ export class CredentialsComponent implements OnInit {
     this.oauthLoading.set(true);
     this.error.set('');
     try {
+      console.log('[OAuth] Requesting access token...');
       const result = await this.googleAuth.requestAccessToken();
+      console.log('[OAuth] Token received, expires in', result.expiresIn, 'seconds');
       this.pendingAccessToken = result.accessToken;
       this.pendingTokenExpiry = new Date(Date.now() + result.expiresIn * 1000);
       this.oauthProjectStep.set(true);
     } catch (err: any) {
+      console.error('[OAuth] Error:', err);
       this.error.set(err.message || 'OAuth sign-in failed');
     } finally {
       this.oauthLoading.set(false);
