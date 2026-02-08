@@ -25,6 +25,14 @@ const angularApp = new AngularNodeAppEngine();
  */
 
 /**
+ * Allow Google OAuth popup to communicate back to the parent window.
+ */
+app.use((_req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
+
+/**
  * Serve static files from /browser
  */
 app.use(
