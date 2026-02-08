@@ -12,9 +12,6 @@ frontend/dist/
 frontend/.angular/
 frontend/.vscode/
 
-# Environment (contains AG Grid license key)
-frontend/src/environments/environment.ts
-
 # Windows Zone.Identifier files
 *:Zone.Identifier
 
