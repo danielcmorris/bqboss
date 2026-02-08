@@ -60,8 +60,18 @@ import type { StoredCredential } from '../../db/app-database';
           }
 
           @if (validated() && validationResult(); as result) {
+            <div class="project-badge">Project: {{ result.projectId }}</div>
+            <label>
+              Name these credentials
+              <input type="text" [ngModel]="credentialName()" (ngModelChange)="credentialName.set($event)" placeholder="e.g. snapdragonerp-prod" />
+            </label>
+            <div class="btn-row">
+              <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
+              <button (click)="saveCredential()" [disabled]="!credentialName().trim()">
+                Save & Use
+              </button>
+            </div>
             <div class="success-info">
-              <div class="project-badge">Project: {{ result.projectId }}</div>
               <div class="datasets">
                 @for (ds of result.datasets; track ds.datasetId) {
                   <div class="dataset">
@@ -74,16 +84,6 @@ import type { StoredCredential } from '../../db/app-database';
                   </div>
                 }
               </div>
-            </div>
-            <label>
-              Name these credentials
-              <input type="text" [ngModel]="credentialName()" (ngModelChange)="credentialName.set($event)" placeholder="e.g. snapdragonerp-prod" />
-            </label>
-            <div class="btn-row">
-              <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
-              <button (click)="saveCredential()" [disabled]="!credentialName().trim()">
-                Save & Use
-              </button>
             </div>
           }
         }
