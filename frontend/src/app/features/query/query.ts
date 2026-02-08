@@ -449,24 +449,54 @@ export class QueryComponent implements OnInit {
         return;
       }
 
-      // Step 2: Store schema in IndexedDB
+      // Step 2: Deduplicate date-suffixed tables, then store schema in IndexedDB
       const now = new Date();
-      const entries: Omit<SchemaEntry, 'id'>[] = schemaResult.rows.map((row: any) => ({
-        credentialId: credId,
-        datasetId: dataset,
-        tableName: row.table_name ?? '',
-        columnName: row.column_name ?? '',
-        dataType: row.data_type ?? '',
-        isNullable: row.is_nullable ?? '',
-        rowCount: 0,
-        tableSizeMb: 0,
-        fetchedAt: now
-      }));
+      const datePattern = /^(.+?)(\d{8})$/;
+      const seenPrefixes = new Set<string>();
+      const skipTables = new Set<string>();
+
+      // Group tables by prefix to find date-suffixed duplicates
+      const tablesByPrefix = new Map<string, string[]>();
+      const allTableNames = new Set(schemaResult.rows.map((r: any) => r.table_name ?? ''));
+      for (const name of allTableNames) {
+        const m = name.match(datePattern);
+        if (m) {
+          const prefix = m[1];
+          let group = tablesByPrefix.get(prefix);
+          if (!group) { group = []; tablesByPrefix.set(prefix, group); }
+          group.push(name);
+        }
+      }
+      // For prefixes with 2+ date-suffixed tables, keep only the first and rename
+      const renameMap = new Map<string, string>();
+      for (const [prefix, tables] of tablesByPrefix) {
+        if (tables.length >= 2) {
+          renameMap.set(tables[0], `${prefix}YYYYMMDD`);
+          for (let i = 1; i < tables.length; i++) {
+            skipTables.add(tables[i]);
+          }
+        }
+      }
+
+      const entries: Omit<SchemaEntry, 'id'>[] = schemaResult.rows
+        .filter((row: any) => !skipTables.has(row.table_name ?? ''))
+        .map((row: any) => ({
+          credentialId: credId,
+          datasetId: dataset,
+          tableName: renameMap.get(row.table_name ?? '') ?? (row.table_name ?? ''),
+          columnName: row.column_name ?? '',
+          dataType: row.data_type ?? '',
+          isNullable: row.is_nullable ?? '',
+          rowCount: 0,
+          tableSizeMb: 0,
+          fetchedAt: now
+        }));
 
       await this.dbService.saveSchemaEntries(credId, dataset, entries);
 
       const tableCount = new Set(entries.map(e => e.tableName)).size;
       const columnCount = entries.length;
+      const skippedCount = allTableNames.size - tableCount;
 
       // Step 3: Check Gemini access
       try {
@@ -474,7 +504,8 @@ export class QueryComponent implements OnInit {
         if (geminiResult.hasAccess) {
           this.aiEnabled.set(true);
           this.aiNotificationType.set('success');
-          this.aiNotification.set(`AI enabled -- schema loaded: ${tableCount} tables, ${columnCount} columns. Gemini access verified.`);
+          const dedup = skippedCount > 0 ? ` (${skippedCount} date-suffixed duplicates collapsed)` : '';
+          this.aiNotification.set(`AI enabled -- schema loaded: ${tableCount} tables, ${columnCount} columns${dedup}. Gemini access verified.`);
         } else {
           this.aiEnabled.set(false);
           this.aiNotificationType.set('error');
