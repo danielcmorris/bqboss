@@ -12,26 +12,115 @@ import type { StoredCredential } from '../../db/app-database';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div class="cred-container">
-      <div class="cred-card">
-        <h1>Credentials</h1>
+    <div class="page">
+      <nav class="banner">
+        <div class="banner-brand" (click)="goHome()"><img src="logo.png" alt="BQ Boss" class="brand-logo" />BQ Boss</div>
+        <div class="banner-links">
+          <button class="link-btn" (click)="goHome()">Home</button>
+        </div>
+      </nav>
 
-        <div class="oauth-section">
+      <div class="body">
+        <!-- Saved Credentials -->
+        @if (savedCredentials().length) {
+          <div class="card">
+            <h2>Saved Credentials</h2>
+            @for (cred of savedCredentials(); track cred.id) {
+              <div class="saved-item" [class.oauth-item]="cred.type === 'oauth'">
+                <div class="saved-info" (click)="useCred(cred)">
+                  <strong>
+                    @if (cred.type === 'oauth') {
+                      <span class="oauth-badge">G</span>
+                    }
+                    {{ cred.name }}
+                  </strong>
+                  <span class="saved-meta">{{ cred.projectId }}</span>
+                </div>
+                <button class="delete-btn" (click)="deleteCred(cred)" title="Remove">&#10005;</button>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Service Account Card -->
+        <div class="card">
+          <h2>Service Account</h2>
+
+          @if (!adding()) {
+            <p>Connect to BigQuery using a Google Cloud service account JSON key.</p>
+            <button class="primary-btn" (click)="adding.set(true)">
+              + Add Service Account
+            </button>
+          }
+
+          @if (adding()) {
+            @if (!validated()) {
+              <p>Paste your Google Cloud service account JSON credentials</p>
+              <textarea
+                [ngModel]="credentialsJson()"
+                (ngModelChange)="credentialsJson.set($event)"
+                placeholder='{"type": "service_account", ...}'
+                rows="10"
+              ></textarea>
+              @if (error() && !oauthProjectStep()) {
+                <div class="error">{{ error() }}</div>
+              }
+              <div class="btn-row">
+                <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
+                <button (click)="validate()" [disabled]="validating() || !credentialsJson().trim()">
+                  {{ validating() ? 'Validating...' : 'Validate' }}
+                </button>
+              </div>
+            }
+
+            @if (validated() && validationResult(); as result) {
+              <div class="project-badge">Project: {{ result.projectId }}</div>
+              <label>
+                Name these credentials
+                <input type="text" [ngModel]="credentialName()" (ngModelChange)="credentialName.set($event)" placeholder="e.g. snapdragonerp-prod" />
+              </label>
+              <div class="btn-row">
+                <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
+                <button (click)="saveCredential()" [disabled]="!credentialName().trim()">
+                  Save & Use
+                </button>
+              </div>
+              <div class="success-info">
+                <div class="datasets">
+                  @for (ds of result.datasets; track ds.datasetId) {
+                    <div class="dataset">
+                      <strong>{{ ds.datasetId }}</strong>
+                      <ul>
+                        @for (t of ds.tables; track t) {
+                          <li>{{ t }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          }
+        </div>
+
+        <!-- OAuth Card -->
+        <div class="card">
+          <h2>Google OAuth</h2>
+          <p>If you would like to use your own authenticator in Google Cloud OAuth validation, you can add your client ID here and authenticate that way.</p>
+
           @if (!oauthAvailable()) {
-            <div class="oauth-setup">
-              <p>To sign in with Google, enter your OAuth Client ID from the
-                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">GCP Credentials Console</a>.
-              </p>
-              <input
-                type="text"
-                [ngModel]="oauthClientIdInput()"
-                (ngModelChange)="oauthClientIdInput.set($event)"
-                placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
-              />
-              <button (click)="saveOAuthClientId()" [disabled]="!oauthClientIdInput().trim()">
-                Save Client ID
-              </button>
-            </div>
+            <p>Enter your OAuth Client ID from the
+              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">GCP Credentials Console</a>.
+            </p>
+            <input
+              type="text"
+              [ngModel]="oauthClientIdInput()"
+              (ngModelChange)="oauthClientIdInput.set($event)"
+              placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+            />
+            <button (click)="saveOAuthClientId()" [disabled]="!oauthClientIdInput().trim()">
+              Save Client ID
+            </button>
           } @else {
             @if (!oauthProjectStep()) {
               <div class="google-btn-row">
@@ -72,161 +161,109 @@ import type { StoredCredential } from '../../db/app-database';
             }
           }
         </div>
-
-        @if (savedCredentials().length) {
-          <div class="saved-section">
-            <h2>Saved Credentials</h2>
-            @for (cred of savedCredentials(); track cred.id) {
-              <div class="saved-item" [class.oauth-item]="cred.type === 'oauth'">
-                <div class="saved-info" (click)="useCred(cred)">
-                  <strong>
-                    @if (cred.type === 'oauth') {
-                      <span class="oauth-badge">G</span>
-                    }
-                    {{ cred.name }}
-                  </strong>
-                  <span class="saved-meta">{{ cred.projectId }}</span>
-                </div>
-                <button class="delete-btn" (click)="deleteCred(cred)" title="Remove">&#10005;</button>
-              </div>
-            }
-          </div>
-          @if (!adding()) {
-            <div class="divider">
-              <span>or add new</span>
-            </div>
-          }
-        }
-
-        @if (!adding()) {
-          <button class="add-btn" (click)="adding.set(true)">
-            + Add Service Account
-          </button>
-        }
-
-        @if (adding()) {
-          @if (!validated()) {
-            <p>Paste your Google Cloud service account JSON credentials</p>
-            <textarea
-              [ngModel]="credentialsJson()"
-              (ngModelChange)="credentialsJson.set($event)"
-              placeholder='{"type": "service_account", ...}'
-              rows="10"
-            ></textarea>
-            @if (error() && !oauthProjectStep()) {
-              <div class="error">{{ error() }}</div>
-            }
-            <div class="btn-row">
-              <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
-              <button (click)="validate()" [disabled]="validating() || !credentialsJson().trim()">
-                {{ validating() ? 'Validating...' : 'Validate' }}
-              </button>
-            </div>
-          }
-
-          @if (validated() && validationResult(); as result) {
-            <div class="project-badge">Project: {{ result.projectId }}</div>
-            <label>
-              Name these credentials
-              <input type="text" [ngModel]="credentialName()" (ngModelChange)="credentialName.set($event)" placeholder="e.g. snapdragonerp-prod" />
-            </label>
-            <div class="btn-row">
-              <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
-              <button (click)="saveCredential()" [disabled]="!credentialName().trim()">
-                Save & Use
-              </button>
-            </div>
-            <div class="success-info">
-              <div class="datasets">
-                @for (ds of result.datasets; track ds.datasetId) {
-                  <div class="dataset">
-                    <strong>{{ ds.datasetId }}</strong>
-                    <ul>
-                      @for (t of ds.tables; track t) {
-                        <li>{{ t }}</li>
-                      }
-                    </ul>
-                  </div>
-                }
-              </div>
-            </div>
-          }
-        }
       </div>
     </div>
   `,
   styles: [`
-    .cred-container {
+    .page {
       min-height: 100vh;
+      background: #0d0d1a;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-      padding: 24px;
+      flex-direction: column;
     }
-    .cred-card {
-      width: 100%;
-      max-width: 640px;
-      padding: 48px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-    h1 { font-size: 1.8rem; margin-bottom: 20px; color: #e0e0e0; }
-    h2 { font-size: 1.1rem; color: #9e9e9e; margin-bottom: 12px; }
-    p { color: #9e9e9e; margin-bottom: 16px; }
 
-    /* OAuth Section */
-    .oauth-section { margin-bottom: 20px; }
-    .oauth-setup a {
-      color: #4fc3f7;
-      text-decoration: none;
-    }
-    .oauth-setup a:hover { text-decoration: underline; }
-    .google-btn-row {
-      display: flex;
-      gap: 8px;
-    }
-    .configure-btn {
-      padding: 12px 14px;
-      font-size: 1.1rem;
-      background: rgba(255,255,255,0.05);
-      color: #9e9e9e;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.15s;
-      flex-shrink: 0;
-    }
-    .configure-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); border-color: rgba(244,67,54,0.3); }
-    .google-btn {
+    /* ---- Banner (matches splash) ---- */
+    .banner {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 10px;
-      flex: 1;
-      padding: 12px 24px;
-      font-size: 1rem;
-      font-weight: 600;
-      background: #fff;
-      color: #3c4043;
-      border: 1px solid #dadce0;
-      border-radius: 8px;
+      justify-content: space-between;
+      padding: 16px 32px;
+      background: rgba(13, 13, 26, 0.8);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .banner-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #4fc3f7, #ab47bc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
       cursor: pointer;
-      transition: background 0.15s, box-shadow 0.15s;
     }
-    .google-btn:hover:not(:disabled) {
-      background: #f8f9fa;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      object-fit: contain;
     }
-    .google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .google-icon { flex-shrink: 0; }
-    .oauth-project-step {
+    .banner-links {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .link-btn {
+      padding: 8px 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #8a8a9e;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .link-btn:hover { color: #e0e0e0; }
+
+    /* ---- Body ---- */
+    .body {
+      max-width: 640px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 24px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ---- Card ---- */
+    .card {
+      padding: 32px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+    }
+    h2 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 14px;
+    }
+    p { color: #8a8a9e; margin-bottom: 16px; font-size: 0.92rem; line-height: 1.55; }
+    a { color: #4fc3f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ---- Saved credentials ---- */
+    .saved-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
       background: rgba(255,255,255,0.03);
       border: 1px solid #30363d;
       border-radius: 8px;
-      padding: 16px;
+      margin-bottom: 8px;
+      transition: border-color 0.15s;
     }
+    .saved-item:hover { border-color: #4fc3f7; }
+    .saved-info { cursor: pointer; flex: 1; }
+    .saved-info strong { color: #e0e0e0; display: block; }
+    .saved-meta { color: #666; font-size: 0.85rem; }
     .oauth-badge {
       display: inline-flex;
       align-items: center;
@@ -242,26 +279,6 @@ import type { StoredCredential } from '../../db/app-database';
       vertical-align: middle;
     }
     .oauth-item { border-color: rgba(66,133,244,0.25) !important; }
-
-    .saved-section { margin-bottom: 8px; }
-    .saved-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      margin-bottom: 8px;
-      transition: border-color 0.15s;
-    }
-    .saved-item:hover { border-color: #4fc3f7; }
-    .saved-info {
-      cursor: pointer;
-      flex: 1;
-    }
-    .saved-info strong { color: #e0e0e0; display: block; }
-    .saved-meta { color: #666; font-size: 0.85rem; }
     .delete-btn {
       background: none;
       border: none;
@@ -273,23 +290,8 @@ import type { StoredCredential } from '../../db/app-database';
       transition: color 0.15s, background 0.15s;
     }
     .delete-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); }
-    .divider {
-      text-align: center;
-      margin: 20px 0;
-      position: relative;
-      color: #666;
-      font-size: 0.85rem;
-    }
-    .divider::before, .divider::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      width: 40%;
-      height: 1px;
-      background: #30363d;
-    }
-    .divider::before { left: 0; }
-    .divider::after { right: 0; }
+
+    /* ---- Form elements ---- */
     textarea {
       width: 100%;
       background: #0d1117;
@@ -325,6 +327,8 @@ import type { StoredCredential } from '../../db/app-database';
       margin-bottom: 16px;
       font-size: 0.9rem;
     }
+
+    /* ---- Buttons ---- */
     button {
       padding: 12px 24px;
       font-size: 1rem;
@@ -338,7 +342,7 @@ import type { StoredCredential } from '../../db/app-database';
     }
     button:hover:not(:disabled) { background: #81d4fa; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .add-btn { width: 100%; }
+    .primary-btn { width: 100%; }
     .secondary-btn {
       background: transparent;
       color: #9e9e9e;
@@ -347,6 +351,51 @@ import type { StoredCredential } from '../../db/app-database';
     .secondary-btn:hover:not(:disabled) { background: rgba(255,255,255,0.05); color: #e0e0e0; }
     .btn-row { display: flex; gap: 12px; }
     .btn-row button { flex: 1; }
+
+    /* ---- Google OAuth ---- */
+    .google-btn-row { display: flex; gap: 8px; }
+    .google-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex: 1;
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #fff;
+      color: #3c4043;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .google-btn:hover:not(:disabled) {
+      background: #f8f9fa;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .google-icon { flex-shrink: 0; }
+    .configure-btn {
+      padding: 12px 14px;
+      font-size: 1.1rem;
+      background: rgba(255,255,255,0.05);
+      color: #9e9e9e;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .configure-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); border-color: rgba(244,67,54,0.3); }
+    .oauth-project-step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    /* ---- Misc ---- */
     .success-info { margin: 20px 0; }
     .project-badge {
       display: inline-block;
@@ -390,9 +439,6 @@ export class CredentialsComponent implements OnInit {
 
   async ngOnInit() {
     await this.loadCredentials();
-    if (!this.savedCredentials().length) {
-      this.adding.set(true);
-    }
     // Initialize OAuth if client ID is stored in IndexedDB
     const clientId = await this.dbService.getOAuthClientId();
     if (clientId) {
@@ -507,6 +553,10 @@ export class CredentialsComponent implements OnInit {
       type: 'service-account'
     });
     this.router.navigate(['/query'], { queryParams: { credId: id } });
+  }
+
+  goHome() {
+    this.router.navigate(['/']);
   }
 
   useCred(cred: StoredCredential) {

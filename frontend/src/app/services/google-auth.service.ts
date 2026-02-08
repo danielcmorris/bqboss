@@ -1,9 +1,10 @@
-import { Injectable } from '@angular/core';
+import { Injectable, NgZone, inject } from '@angular/core';
 
 declare const google: any;
 
 @Injectable({ providedIn: 'root' })
 export class GoogleAuthService {
+  private zone = inject(NgZone);
   private tokenClient: any = null;
   private _initialized = false;
 
@@ -33,18 +34,22 @@ export class GoogleAuthService {
       }
 
       this.tokenClient.callback = (response: any) => {
-        if (response.error) {
-          reject(new Error(response.error_description || response.error));
-          return;
-        }
-        resolve({
-          accessToken: response.access_token,
-          expiresIn: Number(response.expires_in)
+        this.zone.run(() => {
+          if (response.error) {
+            reject(new Error(response.error_description || response.error));
+            return;
+          }
+          resolve({
+            accessToken: response.access_token,
+            expiresIn: Number(response.expires_in)
+          });
         });
       };
 
       this.tokenClient.error_callback = (error: any) => {
-        reject(new Error(error.message || 'OAuth popup was closed or blocked'));
+        this.zone.run(() => {
+          reject(new Error(error.message || 'OAuth popup was closed or blocked'));
+        });
       };
 
       this.tokenClient.requestAccessToken();
