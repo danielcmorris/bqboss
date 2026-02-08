@@ -11,6 +11,42 @@ namespace BigQueryApi.Services;
 
 public class BigQueryService
 {
+    private readonly Dictionary<string, PredictionServiceClient> _geminiClients = new();
+    private readonly SemaphoreSlim _clientLock = new(1, 1);
+
+    private async Task<PredictionServiceClient> GetOrCreateGeminiClient(string credentialsJson)
+    {
+        var projectId = ExtractProjectId(credentialsJson);
+        const string location = "us-central1";
+        var key = $"{projectId}:{location}";
+
+        if (_geminiClients.TryGetValue(key, out var cached))
+            return cached;
+
+        await _clientLock.WaitAsync();
+        try
+        {
+            if (_geminiClients.TryGetValue(key, out cached))
+                return cached;
+
+            var credential = GoogleCredential.FromJson(credentialsJson)
+                .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
+            var endpoint = $"{location}-aiplatform.googleapis.com";
+            var client = await new PredictionServiceClientBuilder
+            {
+                Endpoint = endpoint,
+                GoogleCredential = credential
+            }.BuildAsync();
+
+            _geminiClients[key] = client;
+            return client;
+        }
+        finally
+        {
+            _clientLock.Release();
+        }
+    }
+
     public Task<ValidateCredentialsResponse> ValidateCredentials(string credentialsJson)
     {
         try
@@ -106,16 +142,7 @@ public class BigQueryService
         try
         {
             var projectId = ExtractProjectId(credentialsJson);
-            var credential = GoogleCredential.FromJson(credentialsJson)
-                .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
-
-            var endpoint = $"{location}-aiplatform.googleapis.com";
-            var clientBuilder = new PredictionServiceClientBuilder
-            {
-                Endpoint = endpoint,
-                GoogleCredential = credential
-            };
-            var client = await clientBuilder.BuildAsync();
+            var client = await GetOrCreateGeminiClient(credentialsJson);
 
             var modelName = $"projects/{projectId}/locations/{location}/publishers/google/models/{model}";
             var generateRequest = new GenerateContentRequest
@@ -149,6 +176,59 @@ public class BigQueryService
                 Error = ex.Message,
                 ProjectId = projectId,
                 Location = location
+            };
+        }
+    }
+
+    public async Task<GenerateSqlResponse> GenerateSql(string credentialsJson, string schema, string prompt)
+    {
+        const string location = "us-central1";
+        const string model = "gemini-2.0-flash";
+
+        try
+        {
+            var projectId = ExtractProjectId(credentialsJson);
+            var client = await GetOrCreateGeminiClient(credentialsJson);
+
+            var modelName = $"projects/{projectId}/locations/{location}/publishers/google/models/{model}";
+            var systemText = $"You are a BigQuery SQL assistant. Given the database schema below, convert the user's request into a BigQuery SQL query. Return ONLY the SQL, no explanation or markdown.\n\nSchema:\n{schema}";
+            var generateRequest = new GenerateContentRequest
+            {
+                Model = modelName,
+                Contents =
+                {
+                    new Content
+                    {
+                        Role = "user",
+                        Parts = { new Part { Text = $"{systemText}\n\nUser request: {prompt}" } }
+                    }
+                }
+            };
+
+            var response = await client.GenerateContentAsync(generateRequest);
+            var sql = response.Candidates[0].Content.Parts[0].Text.Trim();
+            if (sql.StartsWith("```"))
+            {
+                var firstNewline = sql.IndexOf('\n');
+                if (firstNewline >= 0)
+                    sql = sql[(firstNewline + 1)..];
+                if (sql.EndsWith("```"))
+                    sql = sql[..^3];
+                sql = sql.Trim();
+            }
+
+            return new GenerateSqlResponse
+            {
+                Success = true,
+                Sql = sql
+            };
+        }
+        catch (Exception ex)
+        {
+            return new GenerateSqlResponse
+            {
+                Success = false,
+                Error = ex.Message
             };
         }
     }

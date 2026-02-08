@@ -67,4 +67,8 @@ export class DatabaseService {
     const count = await db.schema.where('[credentialId+datasetId]').equals([credentialId, datasetId]).count();
     return count > 0;
   }
+
+  async getSchemaEntries(credentialId: number, datasetId: string): Promise<SchemaEntry[]> {
+    return db.schema.where('[credentialId+datasetId]').equals([credentialId, datasetId]).toArray();
+  }
 }

@@ -12,6 +12,12 @@ export interface CheckGeminiAccessResult {
   location?: string;
 }
 
+export interface GenerateSqlResult {
+  success: boolean;
+  sql: string;
+  error?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BigQueryApiService {
   private http = inject(HttpClient);
@@ -40,6 +46,15 @@ export class BigQueryApiService {
       this.http.post<CheckGeminiAccessResult>(
         `${this.baseUrl}/check-gemini-access`,
         { credentialsJson }
+      )
+    );
+  }
+
+  generateSql(credentialsJson: string, schema: string, prompt: string): Promise<GenerateSqlResult> {
+    return firstValueFrom(
+      this.http.post<GenerateSqlResult>(
+        `${this.baseUrl}/generate-sql`,
+        { credentialsJson, schema, prompt }
       )
     );
   }

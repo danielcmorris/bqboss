@@ -38,4 +38,12 @@ public class BigQueryController : ControllerBase
         var result = await _bigQueryService.CheckGeminiAccess(request.CredentialsJson);
         return Ok(result);
     }
+
+    [HttpPost("generate-sql")]
+    public async Task<ActionResult<GenerateSqlResponse>> GenerateSql(
+        [FromBody] GenerateSqlRequest request)
+    {
+        var result = await _bigQueryService.GenerateSql(request.CredentialsJson, request.Schema, request.Prompt);
+        return Ok(result);
+    }
 }
