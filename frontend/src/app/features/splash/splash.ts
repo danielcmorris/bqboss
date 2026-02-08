@@ -8,7 +8,11 @@ import { Router } from '@angular/router';
     <div class="page">
       <nav class="banner">
         <div class="banner-brand">BQ Boss</div>
-        <button class="login-btn" (click)="login()">Log In</button>
+        <div class="banner-links">
+          <button class="link-btn" (click)="howItWorks()">How It Works</button>
+          <button class="link-btn" (click)="aiAssistInfo()">AI Assist</button>
+          <button class="login-btn" (click)="login()">Log In</button>
+        </div>
       </nav>
 
       <div class="hero">
@@ -41,6 +45,7 @@ import { Router } from '@angular/router';
       </div>
 
       <footer class="footer">
+        <button class="footer-link" (click)="howItWorks()">How It Works</button>
         <span>Built for teams that live in BigQuery.</span>
       </footer>
     </div>
@@ -74,6 +79,22 @@ import { Router } from '@angular/router';
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
+    .banner-links {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .link-btn {
+      padding: 8px 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #8a8a9e;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .link-btn:hover { color: #e0e0e0; }
     .login-btn {
       padding: 8px 28px;
       font-size: 0.9rem;
@@ -186,7 +207,20 @@ import { Router } from '@angular/router';
       color: #4a4a5e;
       font-size: 0.82rem;
       border-top: 1px solid rgba(255,255,255,0.04);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
     }
+    .footer-link {
+      background: none;
+      border: none;
+      color: #5a5a70;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .footer-link:hover { color: #4fc3f7; }
   `]
 })
 export class SplashComponent {
@@ -194,5 +228,13 @@ export class SplashComponent {
 
   login() {
     this.router.navigate(['/credentials']);
+  }
+
+  howItWorks() {
+    this.router.navigate(['/how-it-works']);
+  }
+
+  aiAssistInfo() {
+    this.router.navigate(['/ai-assist']);
   }
 }
