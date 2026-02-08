@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService } from '../../services/database.service';
@@ -418,6 +418,7 @@ import type { StoredCredential } from '../../db/app-database';
 })
 export class CredentialsComponent implements OnInit {
   private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
   private dbService = inject(DatabaseService);
   private apiService = inject(BigQueryApiService);
   private googleAuth = inject(GoogleAuthService);
@@ -478,6 +479,7 @@ export class CredentialsComponent implements OnInit {
       this.error.set(err.message || 'OAuth sign-in failed');
     } finally {
       this.oauthLoading.set(false);
+      this.cdr.detectChanges();
     }
   }
 
