@@ -415,13 +415,22 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
       border-right: 1px solid rgba(255,255,255,0.05);
       background: rgba(255,255,255,0.015);
       flex-shrink: 0;
-      overflow-y: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       position: relative;
       transition: width 0.2s;
     }
     .sidebar.collapsed {
       width: 36px;
       overflow: hidden;
+    }
+    .sidebar app-sql-history,
+    .sidebar app-sidebar-tables,
+    .sidebar app-sidebar-favorites {
+      display: flex;
+      flex: 1;
+      min-height: 0;
     }
     .sidebar-toggle {
       position: absolute;

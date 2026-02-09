@@ -67,7 +67,19 @@ export class ResultsGridComponent {
 
   sideBar: SideBarDef = {
     toolPanels: [
-      { id: 'columns', labelDefault: 'Columns', labelKey: 'columns', iconKey: 'columns', toolPanel: 'agColumnsToolPanel' },
+      {
+        id: 'columns',
+        labelDefault: 'Columns',
+        labelKey: 'columns',
+        iconKey: 'columns',
+        toolPanel: 'agColumnsToolPanel',
+        toolPanelParams: {
+          suppressColumnDrag: false,
+          suppressColumnFilter: false,
+          suppressColumnSelectAll: false,
+          suppressRowGroups: false,
+        },
+      },
       { id: 'filters', labelDefault: 'Filters', labelKey: 'filters', iconKey: 'filter', toolPanel: 'agFiltersToolPanel' }
     ]
   };

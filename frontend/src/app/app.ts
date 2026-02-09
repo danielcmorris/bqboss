@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
-import { filter } from 'rxjs';
+import { filter, interval } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -20,6 +20,7 @@ export class App {
             document.location.reload();
           }
         });
+      interval(5 * 60 * 1000).subscribe(() => swUpdate.checkForUpdate());
     }
   }
 }
