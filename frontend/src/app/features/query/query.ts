@@ -160,6 +160,43 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
             </div>
           }
 
+          @if (!queryResult()) {
+            <div class="welcome-card">
+              <h2 class="welcome-title">Welcome to BQ Boss</h2>
+              <p class="welcome-desc">Type any BigQuery SQL in the editor above and press <kbd>Ctrl+Enter</kbd> or click <strong>Execute</strong> in the toolbar to run it.</p>
+              <div class="feature-tiles">
+                <div class="tile">
+                  <span class="tile-icon tile-icon-execute">&#9654;</span>
+                  <div class="tile-text">
+                    <div class="tile-title">Execute</div>
+                    <div class="tile-desc">Type SQL and hit Ctrl+Enter or click Execute. Results appear in an interactive grid with sorting, filtering, and column grouping.</div>
+                  </div>
+                </div>
+                <div class="tile">
+                  <span class="tile-icon tile-icon-ai">&#10024;</span>
+                  <div class="tile-text">
+                    <div class="tile-title">AI Assist</div>
+                    <div class="tile-desc">Enable AI to download your database schema, then describe what you want in plain English. Your prompt and schema are sent to your own Gemini API to generate clean SQL.</div>
+                  </div>
+                </div>
+                <div class="tile">
+                  <span class="tile-icon tile-icon-validate">&#10003;</span>
+                  <div class="tile-text">
+                    <div class="tile-title">Validate</div>
+                    <div class="tile-desc">Runs a local validation script against your database schema before executing. Safe to ignore for complex cross-dataset queries it can't parse.</div>
+                  </div>
+                </div>
+                <div class="tile">
+                  <span class="tile-icon tile-icon-fav">&#9733;</span>
+                  <div class="tile-text">
+                    <div class="tile-title">Favorites</div>
+                    <div class="tile-desc">Save frequently-used queries with a name. Access them anytime from the Favorites tab in the left sidebar.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+
           <app-results-grid [queryResult]="queryResult()" />
         </div>
       </div>
@@ -508,6 +545,90 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
     @keyframes slide {
       0% { transform: translateX(-100%); }
       100% { transform: translateX(350%); }
+    }
+
+    /* ---- Welcome Card ---- */
+    .welcome-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 40px 32px;
+      margin-bottom: 12px;
+    }
+    .welcome-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #e0e0e8;
+      margin: 0 0 8px;
+      background: linear-gradient(135deg, #4fc3f7, #ab47bc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .welcome-desc {
+      color: #8a8a9e;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 520px;
+      margin: 0 0 28px;
+    }
+    .welcome-desc kbd {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      color: #c0c0d0;
+    }
+    .welcome-desc strong {
+      color: #c0c0d0;
+    }
+    .feature-tiles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+      max-width: 600px;
+    }
+    .tile {
+      display: flex;
+      gap: 12px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .tile:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.1);
+    }
+    .tile-icon {
+      font-size: 1.3rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .tile-icon-execute { color: #81c784; }
+    .tile-icon-ai { color: #ce93d8; }
+    .tile-icon-validate { color: #80cbc4; }
+    .tile-icon-fav { color: #ffd54f; }
+    .tile-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #d0d0dc;
+      margin-bottom: 4px;
+    }
+    .tile-desc {
+      font-size: 0.78rem;
+      color: #7a7a90;
+      line-height: 1.5;
     }
 
     /* ---- Validation Dialog ---- */
