@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "resources": {
+        "files": [
+          "/index.html",
+          "/index.csr.html",
+          "/*.js",
+          "/*.css",
+          "/favicon.ico",
+          "/manifest.webmanifest"
+        ]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/logo.png",
+          "/logo.jpg",
+          "/icons/**"
+        ]
+      }
+    },
+    {
+      "name": "prerendered-pages",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/privacy/index.html",
+          "/terms/index.html",
+          "/how-it-works/index.html",
+          "/ai-assist/index.html"
+        ]
+      }
+    }
+  ]
+}
