@@ -23,6 +23,7 @@ import type { QueryResult } from '../../../../models/query-result.model';
         [pagination]="true"
         [paginationPageSize]="100"
         [cellSelection]="true"
+        [allowDragFromColumnsToolPanel]="true"
         rowGroupPanelShow="always"
       />
     }
@@ -63,6 +64,9 @@ export class ResultsGridComponent {
     resizable: true,
     minWidth: 100,
     enableRowGroup: true,
+    enableValue: true,
+    enablePivot: true,
+    suppressMovable: false,
   };
 
   sideBar: SideBarDef = {
