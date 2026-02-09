@@ -14,7 +14,7 @@ import type { QueryResult } from '../../../../models/query-result.model';
         {{ result.totalRows }} rows &middot; {{ result.executionTimeMs }}ms
       </div>
       <ag-grid-angular
-        style="width: 100%; height: calc(100vh - 310px)"
+        style="width: 100%; flex: 1;"
         [theme]="theme"
         [rowData]="result.rows"
         [columnDefs]="columnDefs()"
@@ -23,10 +23,17 @@ import type { QueryResult } from '../../../../models/query-result.model';
         [pagination]="true"
         [paginationPageSize]="100"
         [cellSelection]="true"
+        rowGroupPanelShow="always"
       />
     }
   `,
   styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
     .results-info {
       padding: 8px 4px;
       color: #9e9e9e;
@@ -54,7 +61,8 @@ export class ResultsGridComponent {
     sortable: true,
     filter: true,
     resizable: true,
-    minWidth: 100
+    minWidth: 100,
+    enableRowGroup: true,
   };
 
   sideBar: SideBarDef = {
