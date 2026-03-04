@@ -68,6 +68,11 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
             <button class="tool-btn" (click)="runListTables()">List Tables</button>
             <button class="tool-btn" (click)="runListColumns()">List Columns</button>
           }
+          @if (sourceType() === 'penta') {
+            <button class="tool-btn" [disabled]="syncingDocs()" (click)="syncPentaDocs()">
+              {{ syncingDocs() ? 'Syncing...' : 'Sync Docs' }}
+            </button>
+          }
           <button class="tool-btn" (click)="openHelp()">Help</button>
         </div>
         <div class="toolbar-actions">
@@ -763,6 +768,7 @@ export class QueryComponent implements OnInit {
     return this.favorites().find(f => !f.isBuiltIn && f.sql === currentSql);
   });
   sourceType = signal<'bigquery' | 'penta'>('bigquery');
+  syncingDocs = signal(false);
   aiEnabled = signal(false);
   aiLoading = signal(false);
   aiNotification = signal('');
@@ -1020,6 +1026,22 @@ export class QueryComponent implements OnInit {
     const proj = this.projectId();
     this.sql.set(`SELECT table_name, column_name, data_type, is_nullable\nFROM \`${proj}.${ds}.INFORMATION_SCHEMA.COLUMNS\`\nORDER BY table_name, ordinal_position`);
     this.executeQuery(true);
+  }
+
+  async syncPentaDocs() {
+    const auth = this.activeAuthPayload();
+    this.syncingDocs.set(true);
+    this.aiNotification.set('');
+    try {
+      const result = await this.apiService.syncPentaDocs(auth);
+      this.aiNotification.set(`Docs synced: ${result.registered} file(s) registered — ${result.files.join(', ')}`);
+      this.aiNotificationType.set('success');
+    } catch (err: any) {
+      this.aiNotification.set(`Sync failed: ${err.message}`);
+      this.aiNotificationType.set('error');
+    } finally {
+      this.syncingDocs.set(false);
+    }
   }
 
   async onSourceChange(source: 'bigquery' | 'penta') {
