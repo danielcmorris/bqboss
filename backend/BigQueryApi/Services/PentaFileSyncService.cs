@@ -29,11 +29,14 @@ public class PentaFileSyncService
         // List files already in the bucket
         var existing = await ListGcsBucket(accessToken);
 
-        // Upload any local doc text extracts that aren't already there
+        // Upload text extracts only if neither .docx nor .txt version is already in bucket
         foreach (var doc in _pentaService.GetDocParts())
         {
+            var docxName = doc.FileName;
             var txtName = Path.GetFileNameWithoutExtension(doc.FileName) + ".txt";
-            if (!existing.Contains(txtName, StringComparer.OrdinalIgnoreCase))
+            var alreadyPresent = existing.Contains(docxName, StringComparer.OrdinalIgnoreCase)
+                              || existing.Contains(txtName, StringComparer.OrdinalIgnoreCase);
+            if (!alreadyPresent)
             {
                 var bytes = Convert.FromBase64String(doc.Base64Data);
                 await UploadGcsObject(accessToken, txtName, "text/plain", bytes);
@@ -43,7 +46,7 @@ public class PentaFileSyncService
 
         // Build refs from all supported files in bucket
         var refs = existing
-            .Where(n => n.EndsWith(".txt") || n.EndsWith(".pdf") || n.EndsWith(".md"))
+            .Where(n => n.EndsWith(".txt") || n.EndsWith(".pdf") || n.EndsWith(".md") || n.EndsWith(".docx"))
             .OrderBy(n => n)
             .Select(n => new PentaFileRef(n, GetMimeType(n), $"gs://{_bucket}/{n}"))
             .ToList();
@@ -88,7 +91,9 @@ public class PentaFileSyncService
     }
 
     private static string GetMimeType(string name) =>
-        name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "application/pdf" : "text/plain";
+        name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "application/pdf" :
+        name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" :
+        "text/plain";
 
     private static HttpClient CreateHttpClient(TimeSpan timeout)
     {
