@@ -12,4 +12,25 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="../../PENTA-TABLES-AND-COLUMNS.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>PENTA-TABLES-AND-COLUMNS.csv</Link>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="CopyPentaDocs" AfterTargets="Build">
+    <PropertyGroup>
+      <PentaDocsSource>$(ProjectDir)..\..\Penta Docs\</PentaDocsSource>
+      <PentaDocsDest>$(OutputPath)Penta Docs\</PentaDocsDest>
+    </PropertyGroup>
+    <MakeDir Directories="$(PentaDocsDest)" />
+    <Exec Command="cp &quot;$(PentaDocsSource)BPS.docx&quot; &quot;$(PentaDocsDest)BPS.docx&quot;" />
+    <Exec Command="cp &quot;$(PentaDocsSource)RDS.docx&quot; &quot;$(PentaDocsDest)RDS.docx&quot;" />
+    <Exec Command="cp &quot;$(PentaDocsSource)WDS.docx&quot; &quot;$(PentaDocsDest)WDS.docx&quot;" />
+    <Exec Command="cp &quot;$(PentaDocsSource)I GUIDE_INTRO to the Interfaces.docx&quot; &quot;$(PentaDocsDest)I GUIDE_INTRO to the Interfaces.docx&quot;" />
+    <Exec Command="cp &quot;$(PentaDocsSource)I GUIDE_Pipe Driven.docx&quot; &quot;$(PentaDocsDest)I GUIDE_Pipe Driven.docx&quot;" />
+    <Exec Command="cp &quot;$(PentaDocsSource)I GUIDE_Table Driven.docx&quot; &quot;$(PentaDocsDest)I GUIDE_Table Driven.docx&quot;" />
+  </Target>
+
 </Project>

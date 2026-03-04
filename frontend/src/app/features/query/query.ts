@@ -37,13 +37,21 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
           }
         </div>
         <div class="header-right">
-          <label class="dataset-selector">
-            <select [ngModel]="selectedDataset()" (ngModelChange)="onDatasetChange($event)">
-              @for (ds of datasets(); track ds.datasetId) {
-                <option [value]="ds.datasetId">{{ ds.datasetId }}</option>
-              }
+          <label class="source-selector">
+            <select [ngModel]="sourceType()" (ngModelChange)="onSourceChange($event)">
+              <option value="bigquery">BigQuery</option>
+              <option value="penta">Penta</option>
             </select>
           </label>
+          @if (sourceType() === 'bigquery') {
+            <label class="dataset-selector">
+              <select [ngModel]="selectedDataset()" (ngModelChange)="onDatasetChange($event)">
+                @for (ds of datasets(); track ds.datasetId) {
+                  <option [value]="ds.datasetId">{{ ds.datasetId }}</option>
+                }
+              </select>
+            </label>
+          }
           <app-menu
             [credentials]="allCredentials()"
             [activeCredentialId]="activeCredentialId()"
@@ -56,8 +64,10 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
 
       <div class="toolbar">
         <div class="toolbar-group">
-          <button class="tool-btn" (click)="runListTables()">List Tables</button>
-          <button class="tool-btn" (click)="runListColumns()">List Columns</button>
+          @if (sourceType() === 'bigquery') {
+            <button class="tool-btn" (click)="runListTables()">List Tables</button>
+            <button class="tool-btn" (click)="runListColumns()">List Columns</button>
+          }
           <button class="tool-btn" (click)="openHelp()">Help</button>
         </div>
         <div class="toolbar-actions">
@@ -205,7 +215,7 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
         <div class="dialog-backdrop" (click)="showValidationDialog.set(false)">
           <div class="dialog" (click)="$event.stopPropagation()">
             <div class="dialog-title">Validation Warning</div>
-            <p class="dialog-message">This SQL may not execute successfully in BigQuery. Would you like Gemini to fix it?</p>
+            <p class="dialog-message">This SQL may not execute successfully. Would you like Gemini to fix it?</p>
             <div class="dialog-errors">{{ validationDialogErrors() }}</div>
             <div class="dialog-actions">
               <button class="dialog-btn dialog-cancel" (click)="showValidationDialog.set(false)">Cancel</button>
@@ -292,6 +302,7 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
       background: #4285F4;
       border-radius: 50%;
     }
+    .source-selector select,
     .dataset-selector select {
       background: rgba(255,255,255,0.04);
       color: #c0c0d0;
@@ -302,9 +313,14 @@ import { validateBQSQL, type BQSchema } from '../../lib/bq-validator';
       cursor: pointer;
       transition: border-color 0.15s;
     }
+    .source-selector select:focus,
     .dataset-selector select:focus {
       outline: none;
       border-color: #4fc3f7;
+    }
+    .source-selector select {
+      color: #ab47bc;
+      border-color: rgba(171,71,188,0.3);
     }
 
     /* ---- Toolbar ---- */
@@ -746,6 +762,7 @@ export class QueryComponent implements OnInit {
     if (!currentSql.trim()) return undefined;
     return this.favorites().find(f => !f.isBuiltIn && f.sql === currentSql);
   });
+  sourceType = signal<'bigquery' | 'penta'>('bigquery');
   aiEnabled = signal(false);
   aiLoading = signal(false);
   aiNotification = signal('');
@@ -820,7 +837,8 @@ export class QueryComponent implements OnInit {
     const currentSql = this.sql();
     if (!currentSql.trim()) return;
 
-    if (!skipValidation) {
+    // Skip BigQuery-specific validation for Penta (Oracle SQL)
+    if (!skipValidation && this.sourceType() === 'bigquery') {
       const schema = await this.buildCurrentSchema();
       const result = validateBQSQL(schema, currentSql);
       const errors = result.errors.filter(e => e.severity === 'error');
@@ -838,9 +856,15 @@ export class QueryComponent implements OnInit {
     this.queryResult.set(null);
 
     try {
-      await this.ensureValidToken();
-      const auth = this.activeAuthPayload();
-      const result = await this.apiService.executeQuery(auth, currentSql);
+      let result;
+      if (this.sourceType() === 'penta') {
+        result = await this.apiService.executePentaQuery(currentSql);
+      } else {
+        await this.ensureValidToken();
+        const auth = this.activeAuthPayload();
+        result = await this.apiService.executeQuery(auth, currentSql);
+      }
+
       if (result.success) {
         this.queryResult.set(result);
         await this.dbService.addHistoryEntry({
@@ -907,10 +931,20 @@ export class QueryComponent implements OnInit {
     if (tab === 'favorites') await this.loadFavorites();
   }
 
-  onSelectTable(name: string) {
-    const proj = this.projectId();
-    const ds = this.selectedDataset();
-    this.sql.set(`SELECT *\nFROM \`${proj}.${ds}.${name}\`\nLIMIT 100`);
+  async onSelectTable(name: string) {
+    if (this.sourceType() === 'penta') {
+      const entries = await this.dbService.getSchemaEntries(this.activeCredentialId(), 'penta');
+      const cols = entries.filter(e => e.tableName === name).map(e => e.columnName);
+      if (cols.length > 0) {
+        this.sql.set(`SELECT ${cols.join(', ')}\nFROM ${name}\nWHERE ROWNUM <= 100`);
+      } else {
+        this.sql.set(`SELECT *\nFROM ${name}\nWHERE ROWNUM <= 100`);
+      }
+    } else {
+      const proj = this.projectId();
+      const ds = this.selectedDataset();
+      this.sql.set(`SELECT *\nFROM \`${proj}.${ds}.${name}\`\nLIMIT 100`);
+    }
   }
 
   async toggleFavorite() {
@@ -951,6 +985,12 @@ export class QueryComponent implements OnInit {
       return;
     }
 
+    if (this.sourceType() === 'penta') {
+      this.aiNotificationType.set('success');
+      this.aiNotification.set('Validation is not available for Penta (Oracle SQL). Click Execute to run directly.');
+      return;
+    }
+
     const schema = await this.buildCurrentSchema();
     const result = validateBQSQL(schema, currentSql);
     const errors = result.errors.filter(e => e.severity === 'error');
@@ -982,6 +1022,16 @@ export class QueryComponent implements OnInit {
     this.executeQuery(true);
   }
 
+  async onSourceChange(source: 'bigquery' | 'penta') {
+    this.sourceType.set(source);
+    this.queryResult.set(null);
+    this.error.set('');
+    this.aiNotification.set('');
+    await this.checkExistingSchema();
+    await this.loadFavorites();
+    await this.refreshActiveTab();
+  }
+
   async onDatasetChange(datasetId: string) {
     this.selectedDataset.set(datasetId);
     this.aiNotification.set('');
@@ -991,6 +1041,75 @@ export class QueryComponent implements OnInit {
   }
 
   async enableAi() {
+    if (this.sourceType() === 'penta') {
+      await this.enablePentaAi();
+      return;
+    }
+    await this.enableBigQueryAi();
+  }
+
+  private async enablePentaAi() {
+    const credId = this.activeCredentialId();
+
+    this.aiLoading.set(true);
+    this.aiNotification.set('');
+    this.aiEnabled.set(false);
+
+    try {
+      await this.ensureValidToken();
+      const auth = this.activeAuthPayload();
+
+      // Fetch Penta schema from backend (loaded from CSV)
+      const schemaResponse = await this.apiService.getPentaSchema();
+      const now = new Date();
+      const entries: Omit<SchemaEntry, 'id'>[] = [];
+      for (const table of schemaResponse.tables) {
+        for (const col of table.columns) {
+          entries.push({
+            credentialId: credId,
+            datasetId: 'penta',
+            tableName: table.tableName,
+            columnName: col.name,
+            dataType: col.type,
+            isNullable: '',
+            rowCount: 0,
+            tableSizeMb: 0,
+            fetchedAt: now
+          });
+        }
+      }
+
+      await this.dbService.saveSchemaEntries(credId, 'penta', entries);
+
+      const tableCount = schemaResponse.tables.length;
+      const columnCount = entries.length;
+
+      // Check Gemini access using existing Google credentials
+      try {
+        const geminiResult = await this.apiService.checkGeminiAccess(auth);
+        if (geminiResult.hasAccess) {
+          this.aiEnabled.set(true);
+          this.aiNotificationType.set('success');
+          this.aiNotification.set(`Penta AI enabled -- schema loaded: ${tableCount} tables, ${columnCount} columns. Gemini access verified.`);
+        } else {
+          this.aiEnabled.set(false);
+          this.aiNotificationType.set('error');
+          this.aiNotification.set(`Penta schema saved (${tableCount} tables), but Gemini access failed: ${this.buildGeminiErrorMessage(geminiResult.error ?? '', geminiResult.projectId)}`);
+        }
+      } catch (err: any) {
+        this.aiEnabled.set(false);
+        this.aiNotificationType.set('error');
+        this.aiNotification.set(`Penta schema saved (${tableCount} tables), but Gemini check failed: ${err.message}`);
+      }
+    } catch (err: any) {
+      this.aiNotificationType.set('error');
+      this.aiNotification.set(`Failed to enable Penta AI: ${err.message}`);
+    } finally {
+      this.aiLoading.set(false);
+    }
+  }
+
+  private async enableBigQueryAi() {
     const credId = this.activeCredentialId();
     const dataset = this.selectedDataset();
     const project = this.projectId();
@@ -1089,7 +1208,8 @@ export class QueryComponent implements OnInit {
 
   async aiAssist() {
     const credId = this.activeCredentialId();
-    const dataset = this.selectedDataset();
+    const isPenta = this.sourceType() === 'penta';
+    const datasetId = isPenta ? 'penta' : this.selectedDataset();
     const userText = this.sql();
 
     if (!userText.trim()) {
@@ -1105,20 +1225,27 @@ export class QueryComponent implements OnInit {
       await this.ensureValidToken();
       const auth = this.activeAuthPayload();
 
-      const entries = await this.dbService.getSchemaEntries(credId, dataset);
+      const entries = await this.dbService.getSchemaEntries(credId, datasetId);
       const grouped = new Map<string, string[]>();
       for (const e of entries) {
         let cols = grouped.get(e.tableName);
         if (!cols) { cols = []; grouped.set(e.tableName, cols); }
         cols.push(e.columnName);
       }
-      const project = this.projectId();
       const tableLines = Array.from(grouped.entries())
         .map(([table, cols]) => `${table}: ${cols.join(', ')}`)
         .join('\n');
-      const schema = `Project: ${project}\nDataset: ${dataset}\nAll table references must use \`${project}.${dataset}.table_name\` format.\n\n${tableLines}`;
 
-      const result = await this.apiService.generateSql(auth, schema, userText);
+      let result;
+      if (isPenta) {
+        const schema = `Oracle Database (Penta ERP)\nUse plain table names with no schema prefix. Do NOT use SELECT *. Use ROWNUM for row limits.\n\n${tableLines}`;
+        result = await this.apiService.generatePentaSql(auth, schema, userText);
+      } else {
+        const project = this.projectId();
+        const schema = `Project: ${project}\nDataset: ${datasetId}\nAll table references must use \`${project}.${datasetId}.table_name\` format.\n\n${tableLines}`;
+        result = await this.apiService.generateSql(auth, schema, userText);
+      }
+
       if (result.success) {
         this.sql.set(result.sql);
         this.aiNotificationType.set('success');
@@ -1182,7 +1309,8 @@ export class QueryComponent implements OnInit {
   }
 
   private async checkExistingSchema() {
-    const has = await this.dbService.hasSchema(this.activeCredentialId(), this.selectedDataset());
+    const datasetId = this.sourceType() === 'penta' ? 'penta' : this.selectedDataset();
+    const has = await this.dbService.hasSchema(this.activeCredentialId(), datasetId);
     this.aiEnabled.set(has);
   }
 
@@ -1227,31 +1355,35 @@ export class QueryComponent implements OnInit {
   }
 
   private async loadSidebarTables() {
-    const tables = await this.dbService.getDistinctTableNames(this.activeCredentialId(), this.selectedDataset());
+    const datasetId = this.sourceType() === 'penta' ? 'penta' : this.selectedDataset();
+    const tables = await this.dbService.getDistinctTableNames(this.activeCredentialId(), datasetId);
     this.sidebarTables.set(tables);
   }
 
   private async loadFavorites() {
-    const proj = this.projectId();
-    const ds = this.selectedDataset();
-    const builtIns: FavoriteQuery[] = [
-      {
-        id: -1,
-        credentialId: this.activeCredentialId(),
-        name: 'List Tables',
-        sql: `SELECT table_name, table_type, creation_time\nFROM \`${proj}.${ds}.INFORMATION_SCHEMA.TABLES\`\nORDER BY table_name`,
-        isBuiltIn: true,
-        createdAt: new Date()
-      },
-      {
-        id: -2,
-        credentialId: this.activeCredentialId(),
-        name: 'List Columns',
-        sql: `SELECT table_name, column_name, data_type, is_nullable\nFROM \`${proj}.${ds}.INFORMATION_SCHEMA.COLUMNS\`\nORDER BY table_name, ordinal_position`,
-        isBuiltIn: true,
-        createdAt: new Date()
-      }
-    ];
+    let builtIns: FavoriteQuery[] = [];
+    if (this.sourceType() === 'bigquery') {
+      const proj = this.projectId();
+      const ds = this.selectedDataset();
+      builtIns = [
+        {
+          id: -1,
+          credentialId: this.activeCredentialId(),
+          name: 'List Tables',
+          sql: `SELECT table_name, table_type, creation_time\nFROM \`${proj}.${ds}.INFORMATION_SCHEMA.TABLES\`\nORDER BY table_name`,
+          isBuiltIn: true,
+          createdAt: new Date()
+        },
+        {
+          id: -2,
+          credentialId: this.activeCredentialId(),
+          name: 'List Columns',
+          sql: `SELECT table_name, column_name, data_type, is_nullable\nFROM \`${proj}.${ds}.INFORMATION_SCHEMA.COLUMNS\`\nORDER BY table_name, ordinal_position`,
+          isBuiltIn: true,
+          createdAt: new Date()
+        }
+      ];
+    }
     const stored = await this.dbService.getFavorites(this.activeCredentialId());
     this.favorites.set([...builtIns, ...stored]);
   }

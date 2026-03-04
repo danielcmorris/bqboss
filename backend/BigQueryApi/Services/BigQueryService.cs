@@ -1,116 +1,203 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using BigQueryApi.Models;
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.BigQuery.V2;
-using Google.Cloud.AIPlatform.V1;
-using Google.Api.Gax.Grpc;
-using Google.Api.Gax;
 
 namespace BigQueryApi.Services;
 
 public class BigQueryService
 {
-    private readonly Dictionary<string, PredictionServiceClient> _geminiClients = new();
-    private readonly SemaphoreSlim _clientLock = new(1, 1);
-
-    private async Task<PredictionServiceClient> GetOrCreateGeminiClient(string credentialsJson)
+    private async Task<string> CallGeminiRest(
+        string token, string projectId, string location, string model, string prompt,
+        IReadOnlyList<PentaFileRef>? gcsFiles = null,
+        IReadOnlyList<PentaDocPart>? inlineFiles = null)
     {
-        var projectId = ExtractProjectId(credentialsJson);
-        const string location = "us-central1";
-        var key = $"{projectId}:{location}";
+        var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
 
-        if (_geminiClients.TryGetValue(key, out var cached))
-            return cached;
+        var parts = new List<object>();
+        // Prefer gs:// fileData refs; fall back to inlineData if no GCS sync yet
+        if (gcsFiles?.Count > 0)
+            foreach (var f in gcsFiles)
+                parts.Add(new { fileData = new { mimeType = f.MimeType, fileUri = f.FileUri } });
+        else if (inlineFiles?.Count > 0)
+            foreach (var f in inlineFiles)
+                parts.Add(new { inlineData = new { mimeType = f.MimeType, data = f.Base64Data } });
+        parts.Add(new { text = prompt });
 
-        await _clientLock.WaitAsync();
-        try
+        var body = JsonSerializer.Serialize(new
         {
-            if (_geminiClients.TryGetValue(key, out cached))
-                return cached;
+            contents = new[] { new { role = "user", parts } }
+        });
 
-            var credential = GoogleCredential.FromJson(credentialsJson)
-                .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
-            var endpoint = $"{location}-aiplatform.googleapis.com";
-            var client = await new PredictionServiceClientBuilder
-            {
-                Endpoint = endpoint,
-                GoogleCredential = credential
-            }.BuildAsync();
+        using var http = CreateHttpClient(TimeSpan.FromSeconds(60));
+        var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        req.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
-            _geminiClients[key] = client;
-            return client;
-        }
-        finally
-        {
-            _clientLock.Release();
-        }
+        var resp = await http.SendAsync(req);
+        var responseBody = await resp.Content.ReadAsStringAsync();
+
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Gemini API error ({(int)resp.StatusCode}): {responseBody}");
+
+        using var doc = JsonDocument.Parse(responseBody);
+        return doc.RootElement
+            .GetProperty("candidates")[0]
+            .GetProperty("content")
+            .GetProperty("parts")[0]
+            .GetProperty("text")
+            .GetString()!;
     }
 
-    private async Task<PredictionServiceClient> GetOrCreateGeminiClientFromToken(string accessToken, string projectId)
-    {
-        const string location = "us-central1";
-        var credential = GoogleCredential.FromAccessToken(accessToken)
-            .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
-        var endpoint = $"{location}-aiplatform.googleapis.com";
-        return await new PredictionServiceClientBuilder
-        {
-            Endpoint = endpoint,
-            GoogleCredential = credential
-        }.BuildAsync();
-    }
-
-    public Task<ValidateCredentialsResponse> ValidateCredentials(string credentialsJson, string? accessToken = null, string? projectId = null)
+    public async Task<ValidateCredentialsResponse> ValidateCredentials(string credentialsJson, string? accessToken = null, string? projectId = null)
     {
         try
         {
-            BigQueryClient client;
+            string token;
             string resolvedProjectId;
 
             if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
             {
-                client = CreateClientFromToken(accessToken, projectId);
+                token = accessToken;
                 resolvedProjectId = projectId;
             }
             else
             {
                 resolvedProjectId = ExtractProjectId(credentialsJson);
-                client = CreateClient(credentialsJson, resolvedProjectId);
+                token = await GetServiceAccountToken(credentialsJson, "https://www.googleapis.com/auth/bigquery.readonly");
             }
+
+            using var http = CreateHttpClient(TimeSpan.FromSeconds(15));
 
             var datasets = new List<DatasetInfo>();
-            var datasetList = client.ListDatasets(resolvedProjectId);
+            string? pageToken = null;
 
-            foreach (var dataset in datasetList)
+            do
             {
-                var tables = new List<string>();
-                var tableList = client.ListTables(dataset.Reference);
-                foreach (var table in tableList)
+                var url = $"https://bigquery.googleapis.com/bigquery/v2/projects/{resolvedProjectId}/datasets?maxResults=100";
+                if (pageToken != null) url += $"&pageToken={pageToken}";
+
+                var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                var resp = await http.SendAsync(req);
+                var body = await resp.Content.ReadAsStringAsync();
+
+                if (!resp.IsSuccessStatusCode)
+                    return new ValidateCredentialsResponse { Success = false, Error = $"BigQuery API error ({(int)resp.StatusCode}): {body}" };
+
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                pageToken = root.TryGetProperty("nextPageToken", out var npt) ? npt.GetString() : null;
+
+                if (!root.TryGetProperty("datasets", out var dsArray)) break;
+
+                foreach (var ds in dsArray.EnumerateArray())
                 {
-                    tables.Add(table.Reference.TableId);
+                    var dsId = ds.GetProperty("datasetReference").GetProperty("datasetId").GetString()!;
+                    var tables = await ListTablesRest(http, token, resolvedProjectId, dsId);
+                    datasets.Add(new DatasetInfo { DatasetId = dsId, Tables = tables });
                 }
-                datasets.Add(new DatasetInfo
-                {
-                    DatasetId = dataset.Reference.DatasetId,
-                    Tables = tables
-                });
-            }
+            } while (pageToken != null);
 
-            return Task.FromResult(new ValidateCredentialsResponse
-            {
-                Success = true,
-                ProjectId = resolvedProjectId,
-                Datasets = datasets
-            });
+            return new ValidateCredentialsResponse { Success = true, ProjectId = resolvedProjectId, Datasets = datasets };
         }
         catch (Exception ex)
         {
-            return Task.FromResult(new ValidateCredentialsResponse
-            {
-                Success = false,
-                Error = ex.Message
-            });
+            return new ValidateCredentialsResponse { Success = false, Error = ex.Message };
         }
+    }
+
+    private static async Task<List<string>> ListTablesRest(HttpClient http, string token, string projectId, string datasetId)
+    {
+        var tables = new List<string>();
+        string? pageToken = null;
+        do
+        {
+            var url = $"https://bigquery.googleapis.com/bigquery/v2/projects/{projectId}/datasets/{datasetId}/tables?maxResults=200";
+            if (pageToken != null) url += $"&pageToken={pageToken}";
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var resp = await http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) break;
+            var body = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            pageToken = root.TryGetProperty("nextPageToken", out var npt) ? npt.GetString() : null;
+            if (!root.TryGetProperty("tables", out var arr)) break;
+            foreach (var t in arr.EnumerateArray())
+                tables.Add(t.GetProperty("tableReference").GetProperty("tableId").GetString()!);
+        } while (pageToken != null);
+        return tables;
+    }
+
+    private static async Task<string> GetServiceAccountToken(string credentialsJson, string scope)
+    {
+        using var doc = JsonDocument.Parse(credentialsJson);
+        var root = doc.RootElement;
+        var clientEmail = root.GetProperty("client_email").GetString()!;
+        var privateKeyPem = root.GetProperty("private_key").GetString()!;
+        var tokenUri = root.GetProperty("token_uri").GetString()!;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var header = Base64UrlEncode("""{"alg":"RS256","typ":"JWT"}""");
+        var payload = Base64UrlEncode(JsonSerializer.Serialize(new
+        {
+            iss = clientEmail,
+            scope,
+            aud = tokenUri,
+            iat = now,
+            exp = now + 3600
+        }));
+
+        var message = $"{header}.{payload}";
+        var pemContent = privateKeyPem
+            .Replace("-----BEGIN PRIVATE KEY-----", "")
+            .Replace("-----END PRIVATE KEY-----", "")
+            .Replace("\n", "").Replace("\r", "").Trim();
+        var keyBytes = Convert.FromBase64String(pemContent);
+        using var rsa = RSA.Create();
+        rsa.ImportPkcs8PrivateKey(keyBytes, out _);
+        var sig = Base64UrlEncode(rsa.SignData(Encoding.UTF8.GetBytes(message), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+        var jwt = $"{message}.{sig}";
+
+        using var http = CreateHttpClient(TimeSpan.FromSeconds(10));
+        var resp = await http.PostAsync(tokenUri, new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            ["assertion"] = jwt
+        }));
+        var body = await resp.Content.ReadAsStringAsync();
+        using var tokenDoc = JsonDocument.Parse(body);
+        return tokenDoc.RootElement.GetProperty("access_token").GetString()!;
+    }
+
+    private static string Base64UrlEncode(string input) => Base64UrlEncode(Encoding.UTF8.GetBytes(input));
+    private static string Base64UrlEncode(byte[] input) =>
+        Convert.ToBase64String(input).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    // Force IPv4 to avoid WSL2 IPv6 hang issues with Google APIs
+    private static HttpClient CreateHttpClient(TimeSpan timeout)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (ctx, ct) =>
+            {
+                var entries = await Dns.GetHostAddressesAsync(ctx.DnsEndPoint.Host, AddressFamily.InterNetwork, ct);
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                await socket.ConnectAsync(new IPEndPoint(entries[0], ctx.DnsEndPoint.Port), ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+        };
+        var client = new HttpClient(handler) { Timeout = timeout };
+        client.DefaultRequestVersion = new Version(1, 1);
+        client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        return client;
     }
 
     public async Task<ExecuteQueryResponse> ExecuteQuery(string credentialsJson, string sql, string? accessToken = null, string? projectId = null)
@@ -174,35 +261,21 @@ public class BigQueryService
 
         try
         {
-            PredictionServiceClient client;
+            string token;
             string resolvedProjectId;
 
             if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
             {
-                client = await GetOrCreateGeminiClientFromToken(accessToken, projectId);
+                token = accessToken;
                 resolvedProjectId = projectId;
             }
             else
             {
                 resolvedProjectId = ExtractProjectId(credentialsJson);
-                client = await GetOrCreateGeminiClient(credentialsJson);
+                token = await GetServiceAccountToken(credentialsJson, "https://www.googleapis.com/auth/cloud-platform");
             }
 
-            var modelName = $"projects/{resolvedProjectId}/locations/{location}/publishers/google/models/{model}";
-            var generateRequest = new GenerateContentRequest
-            {
-                Model = modelName,
-                Contents =
-                {
-                    new Content
-                    {
-                        Role = "user",
-                        Parts = { new Part { Text = "Say OK" } }
-                    }
-                }
-            };
-
-            await client.GenerateContentAsync(generateRequest);
+            await CallGeminiRest(token, resolvedProjectId, location, model, "Say OK");
 
             return new CheckGeminiAccessResponse
             {
@@ -229,44 +302,34 @@ public class BigQueryService
         }
     }
 
-    public async Task<GenerateSqlResponse> GenerateSql(string credentialsJson, string schema, string prompt, string? accessToken = null, string? projectId = null)
+    public async Task<GenerateSqlResponse> GenerateSql(string credentialsJson, string schema, string prompt, string? accessToken = null, string? projectId = null, bool isOracle = false, IReadOnlyList<PentaFileRef>? gcsFiles = null, IReadOnlyList<PentaDocPart>? inlineFiles = null)
     {
         const string location = "us-central1";
         const string model = "gemini-2.0-flash";
 
         try
         {
-            PredictionServiceClient client;
+            string token;
             string resolvedProjectId;
 
             if (!string.IsNullOrEmpty(accessToken) && !string.IsNullOrEmpty(projectId))
             {
-                client = await GetOrCreateGeminiClientFromToken(accessToken, projectId);
+                token = accessToken;
                 resolvedProjectId = projectId;
             }
             else
             {
                 resolvedProjectId = ExtractProjectId(credentialsJson);
-                client = await GetOrCreateGeminiClient(credentialsJson);
+                token = await GetServiceAccountToken(credentialsJson, "https://www.googleapis.com/auth/cloud-platform");
             }
 
-            var modelName = $"projects/{resolvedProjectId}/locations/{location}/publishers/google/models/{model}";
-            var systemText = $"You are a BigQuery SQL assistant. Given the database schema below, convert the user's request into a BigQuery SQL query. Return ONLY the SQL, no explanation or markdown.\n\nSchema:\n{schema}";
-            var generateRequest = new GenerateContentRequest
-            {
-                Model = modelName,
-                Contents =
-                {
-                    new Content
-                    {
-                        Role = "user",
-                        Parts = { new Part { Text = $"{systemText}\n\nUser request: {prompt}" } }
-                    }
-                }
-            };
+            var systemText = isOracle
+                ? $"You are an Oracle SQL assistant. Given the database schema below (Oracle database), convert the user's request into an Oracle SQL query. Use plain table names with no schema prefix. Do NOT use SELECT * - always list column names explicitly. Use ROWNUM for row limits instead of LIMIT. Return ONLY the SQL, no explanation or markdown.\n\nSchema:\n{schema}"
+                : $"You are a BigQuery SQL assistant. Given the database schema below, convert the user's request into a BigQuery SQL query. Return ONLY the SQL, no explanation or markdown.\n\nSchema:\n{schema}";
 
-            var response = await client.GenerateContentAsync(generateRequest);
-            var sql = response.Candidates[0].Content.Parts[0].Text.Trim();
+            var fullPrompt = $"{systemText}\n\nUser request: {prompt}";
+            var sql = (await CallGeminiRest(token, resolvedProjectId, location, model, fullPrompt, gcsFiles, inlineFiles)).Trim();
+
             if (sql.StartsWith("```"))
             {
                 var firstNewline = sql.IndexOf('\n');

@@ -65,12 +65,28 @@ import type { StoredCredential } from '../../db/app-database';
               @if (error() && !oauthProjectStep()) {
                 <div class="error">{{ error() }}</div>
               }
-              <div class="btn-row">
-                <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
-                <button (click)="validate()" [disabled]="validating() || !credentialsJson().trim()">
-                  {{ validating() ? 'Validating...' : 'Validate' }}
-                </button>
-              </div>
+              @if (validationFailed() && failedProjectId()) {
+                <div class="warn-box">
+                  BigQuery access failed for project <strong>{{ failedProjectId() }}</strong>. You can still save these credentials to use with <strong>Penta</strong> or for Gemini AI assistance only.
+                </div>
+                <label>
+                  Name these credentials
+                  <input type="text" [ngModel]="credentialName()" (ngModelChange)="credentialName.set($event)" placeholder="e.g. dash-penta" />
+                </label>
+                <div class="btn-row">
+                  <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
+                  <button class="warn-btn" (click)="saveCredentialWithoutBigQuery()" [disabled]="!credentialName().trim()">
+                    Save for Penta / AI
+                  </button>
+                </div>
+              } @else {
+                <div class="btn-row">
+                  <button class="secondary-btn" (click)="cancelAdd()">Cancel</button>
+                  <button (click)="validate()" [disabled]="validating() || !credentialsJson().trim()">
+                    {{ validating() ? 'Validating...' : 'Validate' }}
+                  </button>
+                </div>
+              }
             }
 
             @if (validated() && validationResult(); as result) {
@@ -307,6 +323,16 @@ import type { StoredCredential } from '../../db/app-database';
       margin-bottom: 16px;
       font-size: 0.9rem;
     }
+    .warn-box {
+      color: #ffb74d;
+      background: rgba(255,183,77,0.1);
+      border: 1px solid rgba(255,183,77,0.25);
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
 
     /* ---- Buttons ---- */
     button {
@@ -329,6 +355,8 @@ import type { StoredCredential } from '../../db/app-database';
       border: 1px solid #30363d;
     }
     .secondary-btn:hover:not(:disabled) { background: rgba(255,255,255,0.05); color: #e0e0e0; }
+    .warn-btn { background: rgba(255,183,77,0.15); color: #ffb74d; border: 1px solid rgba(255,183,77,0.3); }
+    .warn-btn:hover:not(:disabled) { background: rgba(255,183,77,0.25); }
     .btn-row { display: flex; gap: 12px; }
     .btn-row button { flex: 1; }
 
@@ -405,6 +433,8 @@ export class CredentialsComponent implements OnInit {
   credentialName = signal('');
   validating = signal(false);
   validated = signal(false);
+  validationFailed = signal(false);
+  failedProjectId = signal('');
   error = signal('');
   validationResult = signal<ValidateCredentialsResponse | null>(null);
 
@@ -514,19 +544,48 @@ export class CredentialsComponent implements OnInit {
   async validate() {
     this.validating.set(true);
     this.error.set('');
+    this.validationFailed.set(false);
     try {
       const result = await this.apiService.validateCredentials({ credentialsJson: this.credentialsJson() });
       if (result.success) {
         this.validationResult.set(result);
         this.validated.set(true);
+        if (!this.credentialName().trim()) {
+          this.credentialName.set(result.projectId ?? '');
+        }
       } else {
         this.error.set(result.error || 'Validation failed');
+        this.trySetFailedProjectId();
+        this.validationFailed.set(true);
       }
     } catch (err: any) {
       this.error.set(err.message || 'Failed to connect to backend');
+      this.trySetFailedProjectId();
+      this.validationFailed.set(true);
     } finally {
       this.validating.set(false);
     }
+  }
+
+  private trySetFailedProjectId() {
+    try {
+      const parsed = JSON.parse(this.credentialsJson());
+      if (parsed.project_id) this.failedProjectId.set(parsed.project_id);
+    } catch {}
+  }
+
+  async saveCredentialWithoutBigQuery() {
+    const projectId = this.failedProjectId();
+    if (!projectId || !this.credentialName().trim()) return;
+    const id = await this.dbService.saveCredential({
+      name: this.credentialName(),
+      credentialsJson: this.credentialsJson(),
+      projectId,
+      datasets: [],
+      createdAt: new Date(),
+      type: 'service-account'
+    });
+    this.router.navigate(['/query'], { queryParams: { credId: id } });
   }
 
   async saveCredential() {
@@ -563,6 +622,8 @@ export class CredentialsComponent implements OnInit {
   cancelAdd() {
     this.adding.set(false);
     this.validated.set(false);
+    this.validationFailed.set(false);
+    this.failedProjectId.set('');
     this.credentialsJson.set('');
     this.credentialName.set('');
     this.error.set('');
